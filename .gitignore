@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.venv/
+
+# Secrets
+.env
+credentials.json
+token.json
+
+# Local databases
+app/db/*.db
+app/db/*.db-shm
+app/db/*.db-wal
