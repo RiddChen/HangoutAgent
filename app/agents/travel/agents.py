@@ -1,13 +1,16 @@
 # app/agents/travel/agents.py
-"""子 Agent 定义：天气、路线、POI、邮件、12306（预留）、住宿（预留）。"""
+"""子 Agent 定义：天气、路线、周边、邮件、火车、飞机、住宿。"""
 
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
+from dotenv import load_dotenv
 from app.agents.travel.prompts import (
     WEATHER_PROMPT, ROUTE_PROMPT, POI_PROMPT,
-    EMAIL_PROMPT, TRAIN_PROMPT, HOTEL_PROMPT,
+    EMAIL_PROMPT, TRAIN_PROMPT, FLIGHT_PROMPT, HOTEL_PROMPT,
 )
-from app.agents.travel.tools import get_saved_plan, send_invite_email
+from app.agents.travel.tools import get_final_plan, send_final_plan_email
+
+load_dotenv()
 
 
 def _model():
@@ -45,18 +48,27 @@ def create_email_agent():
     """邮件专家：读方案 + 发邀请邮件（interrupt 确认）。"""
     return create_agent(
         _model(),
-        tools=[get_saved_plan, send_invite_email],
+        tools=[get_final_plan, send_final_plan_email],
         name="email_expert",
         system_prompt=EMAIL_PROMPT,
     )
 
 
 def create_train_agent(tools: list):
-    """12306 专家：查火车票（跨城时启用）。"""
+    """12306 专家：查火车票（跨城时自动启用）。"""
     return create_agent(
         _model(), tools=tools,
         name="train_expert",
         system_prompt=TRAIN_PROMPT,
+    )
+
+
+def create_flight_agent(tools: list):
+    """飞机票专家：查航班（跨城时自动启用）。"""
+    return create_agent(
+        _model(), tools=tools,
+        name="flight_expert",
+        system_prompt=FLIGHT_PROMPT,
     )
 
 

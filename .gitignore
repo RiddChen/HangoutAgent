@@ -7,15 +7,42 @@ wheels/
 *.egg-info
 
 # Virtual environments
-.venv
 .venv/
 
 # Secrets
 .env
+.env.*
 credentials.json
 token.json
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code
+.claude/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Redis dump
+dump.rdb
 
 # Local databases
 app/db/*.db
 app/db/*.db-shm
 app/db/*.db-wal
+
+# 早期规划文档 (不属于项目主体)
+docs/
+travel-multi-agent-mcp-plan*.md
+DEMO_BUILD_GUIDE.md
+src/
+
+# 旧 Next.js 前端遗留
+app/static/_next/
+app/static/_not-found/
+app/static/404/
+app/static/__next.*
+app/static/*.txt
+app/static/*.svg

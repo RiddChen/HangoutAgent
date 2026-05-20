@@ -950,12 +950,12 @@
       const actionRequest = Array.isArray(info.action_requests) ? info.action_requests[0] : null;
       const args = actionRequest?.args || {};
 
-      if (info.type === "location_confirm") {
-        els.interruptTitle.textContent = "位置权限确认";
+      if (info.type === "weather_confirm") {
+        els.interruptTitle.textContent = "天气确认";
         emailPreview.style.display = "none";
-        els.interruptText.textContent = info.message || "是否允许系统获取当前位置来确定出发地？";
-        els.approveBtn.textContent = "允许";
-        els.rejectBtn.textContent = "拒绝";
+        els.interruptText.textContent = `${info.message || "天气不太理想，是否继续？"}${info.weather_summary ? "\n\n" + info.weather_summary : ""}`;
+        els.approveBtn.textContent = "不介意，继续";
+        els.rejectBtn.textContent = "在意，换时间";
       } else if (info.to || info.to_email || args.to_email || args.to) {
         els.interruptTitle.textContent = "邮件发送确认";
         emailTo.textContent = `${info.to_name || args.to_name || ""} (${info.to_email || info.to || args.to_email || args.to || ""})`;
@@ -1017,11 +1017,7 @@
         let buffer = "";
         let streamingBubble = null;
         let assistantContent = "";
-        let firstEventReceived = false;
-
-        // 立刻显示等待状态
-        const thinkingMsg = addMessage("assistant", "规划中...", "status-msg");
-        els.statusPill.textContent = "规划中...";
+        els.statusPill.textContent = modeConfig().busyText;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1039,12 +1035,6 @@
               payload = data ? JSON.parse(data) : {};
             } catch {
               payload = { content: data };
-            }
-
-            // 第一个事件到达时移除"规划中..."
-            if (!firstEventReceived) {
-              firstEventReceived = true;
-              thinkingMsg.remove();
             }
 
             if (event === "message" || event === "message_delta") {
@@ -1077,8 +1067,8 @@
               const isEmailInterrupt = interruptInfo.to || interruptInfo.to_email || args.to_email || args.to;
               addMessage(
                 "assistant",
-                interruptInfo.type === "location_confirm"
-                  ? "需要你确认是否允许定位。"
+                interruptInfo.type === "weather_confirm"
+                  ? "需要你确认是否介意当前天气。"
                   : (isEmailInterrupt ? "邮件发送前需要你确认。" : "这个操作需要你确认。"),
                 "status-msg"
               );
@@ -1088,9 +1078,6 @@
               addMessage("assistant", payload.content || payload.error || "请求出错", "error-msg");
             } else if (event === "done") {
               streamingBubble = null;
-              if (showPlanChoices && !interruptDecision && hasSelectablePlans(assistantContent)) {
-                showPlanPanel();
-              }
             }
           }
         }
@@ -1187,11 +1174,9 @@
         info = info[0] || {};
       }
       const decision = { type: "approve" };
-      if (info.type === "location_confirm") {
-        decision.kind = "location";
-      }
       hideInterrupt();
-      addMessage("user", info.type === "location_confirm" ? "允许获取位置。" : "确认发送邮件。");
+      const approveText = info.type === "weather_confirm" ? "不介意天气，继续规划。" : "确认发送邮件。";
+      addMessage("user", approveText);
       await sendToAgent({ interruptDecision: decision });
     });
 
@@ -1201,13 +1186,12 @@
       if (Array.isArray(info)) {
         info = info[0] || {};
       }
-      const message = els.rejectReason.value.trim() || "请重新调整邮件内容。";
+      const message = els.rejectReason.value.trim()
+        || (info.type === "weather_confirm" ? "我在意天气，想换个时间。" : "请重新调整邮件内容。");
       const decision = { type: "reject", message };
-      if (info.type === "location_confirm") {
-        decision.kind = "location";
-      }
       hideInterrupt();
-      addMessage("user", info.type === "location_confirm" ? "拒绝获取位置。" : `拒绝发送：${message}`);
+      const rejectText = info.type === "weather_confirm" ? `在意天气：${message}` : `拒绝发送：${message}`;
+      addMessage("user", rejectText);
       await sendToAgent({ interruptDecision: decision });
     });
   </script>
