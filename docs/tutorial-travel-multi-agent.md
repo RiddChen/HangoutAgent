@@ -1295,15 +1295,15 @@ email_agent.generate_sse(thread_id, message, interrupt_decision)
 ```python
 # app/agents/travel/handoff.py
 
-from app.agents.email_agent import email_agent
+from app.agents.email.email_agent import email_agent
 
 
 async def handoff_to_email(
-    thread_id: str,
-    to_email: str,
-    to_name: str,
-    email_brief: str,
-    travel_plan_summary: str,
+        thread_id: str,
+        to_email: str,
+        to_name: str,
+        email_brief: str,
+        travel_plan_summary: str,
 ):
     """将行程方案 handoff 给 EmailAgent，生成邀约邮件。
 
@@ -1321,9 +1321,9 @@ async def handoff_to_email(
 
     # 复用 EmailAgent 的 SSE 流
     async for event in email_agent.generate_sse(
-        thread_id=f"travel-email-{thread_id}",
-        message=message,
-        interrupt_decision=None,
+            thread_id=f"travel-email-{thread_id}",
+            message=message,
+            interrupt_decision=None,
     ):
         yield event
 ```
@@ -1556,17 +1556,16 @@ from app.agents.travel.review_agent import review_plan
 from app.agents.travel.router_agent import classify_intent
 from app.agents.travel.subagents import run_all_subagents
 
-
 # Orchestrator 需要 checkpointer 来支持多轮对话
 _checkpointer = InMemorySaver()
 _orchestrator = create_orchestrator(checkpointer=_checkpointer)
 
 
 async def travel_pipeline_sse(
-    thread_id: str,
-    message: str,
-    user_id: str = "",
-    interrupt_decision: dict | None = None,
+        thread_id: str,
+        message: str,
+        user_id: str = "",
+        interrupt_decision: dict | None = None,
 ):
     """出行企划 SSE 流，供 FastAPI 端点调用。
 
@@ -1587,8 +1586,8 @@ async def travel_pipeline_sse(
     if interrupt_decision:
         yield _sse("status", "正在处理邮件确认...")
         async for event in handoff_to_email_resume(
-            thread_id=thread_id,
-            interrupt_decision=interrupt_decision,
+                thread_id=thread_id,
+                interrupt_decision=interrupt_decision,
         ):
             yield event
         yield _sse("done", "处理完成")
@@ -1678,11 +1677,11 @@ async def travel_pipeline_sse(
 
         # 真正调用 EmailAgent！不只是发个信号
         async for event in handoff_to_email(
-            thread_id=thread_id,
-            to_email=state.get("invitee_email", ""),
-            to_name=state.get("invitee_name", "朋友"),
-            email_brief=plan[:200],
-            travel_plan_summary=plan[:500],
+                thread_id=thread_id,
+                to_email=state.get("invitee_email", ""),
+                to_name=state.get("invitee_name", "朋友"),
+                email_brief=plan[:200],
+                travel_plan_summary=plan[:500],
         ):
             yield event
             # 注意：如果 EmailAgent 返回了 interrupt 事件（HITL），
@@ -1693,20 +1692,20 @@ async def travel_pipeline_sse(
 
 
 async def handoff_to_email_resume(
-    thread_id: str,
-    interrupt_decision: dict,
+        thread_id: str,
+        interrupt_decision: dict,
 ):
     """处理邮件 HITL 确认：将用户的确认/拒绝决定转发给 EmailAgent。
 
     「回顾」这和 EmailAgent 的 chat.py 中处理 interrupt_decision 的逻辑一样：
     email_agent.generate_sse(thread_id, message="", interrupt_decision=decision)
     """
-    from app.agents.email_agent import email_agent
+    from app.agents.email.email_agent import email_agent
 
     async for event in email_agent.generate_sse(
-        thread_id=f"travel-email-{thread_id}",
-        message="",
-        interrupt_decision=interrupt_decision,
+            thread_id=f"travel-email-{thread_id}",
+            message="",
+            interrupt_decision=interrupt_decision,
     ):
         yield event
 

@@ -284,9 +284,8 @@ from app.agents.personal_chief import search_recipes, get_messages, clear_messag
 from fastapi import APIRouter
 from sse_starlette import EventSourceResponse
 
-from app.agents.email_agent import email_agent
+from app.agents.email.email_agent import email_agent
 from app.models.schemas import ChatRequest
-
 
 router = APIRouter()
 
@@ -309,7 +308,7 @@ async def send_chat(request: ChatRequest):
 ```python
 from contextlib import asynccontextmanager
 
-from app.agents.email_agent import email_agent
+from app.agents.email.email_agent import email_agent
 from app.api.v1 import chat, travel
 
 
@@ -1216,6 +1215,541 @@ MCP 工具调用也要分级：
 发送前有人工确认
 不会改坏 personal_chief
 ```
+
+## 阶段 7：从这里开始真正开发 MVP
+
+前面的阶段只完成了项目骨架、FastAPI、静态前端、EmailAgent 复用。真正开发从这里开始。
+
+第一版目标不是一口气接真实高德 MCP，而是先跑通这个闭环：
+
+```text
+用户：我想这周日去西溪湿地玩
+系统：解析日期 -> 查天气 mock -> 追问出发地
+用户：从武林广场出发
+系统：路线规划 mock -> 生成 latest_plan
+用户：帮我跟 Adam 发邮件问他要不要一起去
+系统：识别为 invite_friend_by_email，准备交给 EmailAgent
+```
+
+第一版先用 mock 数据，保证多 Agent 流程、状态保存、追问、重规划都能跑。后面再把 `WeatherAgent`、`RouteAgent`、`PlaceAgent` 替换成 MCP 工具。
+
+### 7.1 新建结构化模型
+
+创建：
+
+```text
+app/models/travel.py
+```
+
+写入：
+
+```python
+from pydantic import BaseModel, Field
+
+
+class Invitee(BaseModel):
+    name: str
+    email: str | None = None
+
+
+class RouteOption(BaseModel):
+    mode: str
+    duration_minutes: int
+    summary: str
+    transfers: int = 0
+    source: str = "mock"
+
+
+class ItineraryItem(BaseModel):
+    start_time: str
+    activity: str
+    place_name: str | None = None
+    notes: str | None = None
+
+
+class LocalOutingPlan(BaseModel):
+    title: str
+    date: str
+    destination: str
+    origin: str
+    weather_summary: str
+    route: RouteOption
+    itinerary: list[ItineraryItem]
+    notes: list[str] = Field(default_factory=list)
+
+
+class TravelSessionState(BaseModel):
+    thread_id: str
+    raw_goal: str | None = None
+    destination: str | None = None
+    date_text: str | None = None
+    date: str | None = None
+    origin: str | None = None
+    weather_summary: str | None = None
+    weather_ok: bool | None = None
+    route_options: list[RouteOption] = Field(default_factory=list)
+    selected_route: RouteOption | None = None
+    latest_plan: LocalOutingPlan | None = None
+```
+
+### 7.2 新建 prompts.py
+
+创建：
+
+```text
+app/agents/travel/prompts.py
+```
+
+写入：
+
+```python
+ROUTER_PROMPT = """
+你是 CityBuddy 的 RouterAgent。
+只判断用户意图，不要规划路线，不要发邮件。
+
+可选 intent:
+- local_outing_plan
+- provide_origin
+- transport_replan
+- invite_friend_by_email
+- unknown
+
+输出 JSON:
+{
+  "intent": "...",
+  "confidence": 0.0,
+  "reason": "..."
+}
+"""
+
+PLANNER_PROMPT = """
+你是 CityBuddy 的 PlannerAgent。
+根据日期、目的地、出发地、天气、路线，生成本地玩乐计划。
+不要发送邮件。
+"""
+```
+
+### 7.3 新建 DateAgent
+
+创建：
+
+```text
+app/agents/travel/date_agent.py
+```
+
+写入：
+
+```python
+from datetime import date, timedelta
+
+
+class DateAgent:
+    def parse(self, message: str) -> tuple[str | None, str | None]:
+        today = date.today()
+
+        if "这周日" in message or "周日" in message or "星期日" in message:
+            days_until_sunday = (6 - today.weekday()) % 7
+            target = today + timedelta(days=days_until_sunday)
+            return "这周日", target.isoformat()
+
+        if "明天" in message:
+            target = today + timedelta(days=1)
+            return "明天", target.isoformat()
+
+        return None, None
+```
+
+### 7.4 新建 WeatherAgent
+
+创建：
+
+```text
+app/agents/travel/weather_agent.py
+```
+
+第一版先 mock：
+
+```python
+class WeatherAgent:
+    def check(self, city: str | None, target_date: str) -> dict:
+        return {
+            "ok": True,
+            "summary": f"{target_date} 天气适合户外活动，第一版使用 mock 天气数据。",
+            "alternative_dates": [],
+        }
+```
+
+后面替换成天气 MCP 或高德天气接口。
+
+### 7.5 新建 RouteAgent
+
+创建：
+
+```text
+app/agents/travel/route_agent.py
+```
+
+第一版先 mock：
+
+```python
+from app.models.travel import RouteOption
+
+
+class RouteAgent:
+    def plan(self, origin: str, destination: str) -> list[RouteOption]:
+        return [
+            RouteOption(
+                mode="地铁+步行",
+                duration_minutes=48,
+                summary=f"从{origin}出发，乘坐地铁到西溪湿地附近后步行到达。",
+                transfers=1,
+            ),
+            RouteOption(
+                mode="打车",
+                duration_minutes=32,
+                summary=f"从{origin}打车前往{destination}，耗时更短但费用更高。",
+                transfers=0,
+            ),
+        ]
+```
+
+后面这里替换成高德地图 MCP。
+
+### 7.6 新建 PlannerAgent
+
+创建：
+
+```text
+app/agents/travel/planner_agent.py
+```
+
+写入：
+
+```python
+from app.models.travel import ItineraryItem, LocalOutingPlan, RouteOption
+
+
+class PlannerAgent:
+    def build_plan(
+        self,
+        destination: str,
+        target_date: str,
+        origin: str,
+        weather_summary: str,
+        selected_route: RouteOption,
+    ) -> LocalOutingPlan:
+        return LocalOutingPlan(
+            title=f"{destination}本地游玩计划",
+            date=target_date,
+            destination=destination,
+            origin=origin,
+            weather_summary=weather_summary,
+            route=selected_route,
+            itinerary=[
+                ItineraryItem(
+                    start_time="09:30",
+                    activity="从出发地出发",
+                    place_name=origin,
+                    notes=selected_route.summary,
+                ),
+                ItineraryItem(
+                    start_time="10:30",
+                    activity="抵达并开始游玩",
+                    place_name=destination,
+                    notes="先按轻松路线游玩，避免行程过赶。",
+                ),
+                ItineraryItem(
+                    start_time="12:30",
+                    activity="附近午餐",
+                    place_name=destination,
+                    notes="后续可接入 POI MCP 推荐餐厅。",
+                ),
+                ItineraryItem(
+                    start_time="14:00",
+                    activity="继续游玩或拍照散步",
+                    place_name=destination,
+                    notes="根据体力和天气调整。",
+                ),
+            ],
+            notes=[
+                "第一版路线和天气为 mock 数据。",
+                "后续会替换成高德地图 MCP 和天气 MCP。",
+            ],
+        )
+```
+
+### 7.7 新建内存状态仓库
+
+创建：
+
+```text
+app/agents/travel/state_store.py
+```
+
+写入：
+
+```python
+from app.models.travel import TravelSessionState
+
+
+class TravelStateStore:
+    def __init__(self):
+        self._states: dict[str, TravelSessionState] = {}
+
+    def get(self, thread_id: str) -> TravelSessionState:
+        if thread_id not in self._states:
+            self._states[thread_id] = TravelSessionState(thread_id=thread_id)
+        return self._states[thread_id]
+
+    def save(self, state: TravelSessionState) -> None:
+        self._states[state.thread_id] = state
+
+
+travel_state_store = TravelStateStore()
+```
+
+第一版先用内存。后面再换 SQLite checkpoint。
+
+### 7.8 新建 Orchestrator
+
+创建：
+
+```text
+app/agents/travel/orchestrator.py
+```
+
+写入：
+
+```python
+from app.agents.travel.date_agent import DateAgent
+from app.agents.travel.planner_agent import PlannerAgent
+from app.agents.travel.route_agent import RouteAgent
+from app.agents.travel.state_store import travel_state_store
+from app.agents.travel.weather_agent import WeatherAgent
+
+
+class TravelOrchestrator:
+    def __init__(self):
+        self.date_agent = DateAgent()
+        self.weather_agent = WeatherAgent()
+        self.route_agent = RouteAgent()
+        self.planner_agent = PlannerAgent()
+
+    async def handle(self, thread_id: str, message: str, user_id: str | None = None) -> dict:
+        state = travel_state_store.get(thread_id)
+
+        if self._is_invite_request(message):
+            if state.latest_plan is None:
+                return {
+                    "type": "message",
+                    "content": "我还没有找到可用于邀约的出行计划。你可以先让我规划一次。",
+                }
+            return {
+                "type": "handoff_email",
+                "content": "可以，我会根据 latest_plan 交给 EmailAgent 生成邀约邮件草稿。",
+                "latest_plan": state.latest_plan.model_dump(),
+            }
+
+        if self._looks_like_origin(message) and state.destination:
+            state.origin = message.strip()
+            state.route_options = self.route_agent.plan(state.origin, state.destination)
+            state.selected_route = state.route_options[0]
+            state.latest_plan = self.planner_agent.build_plan(
+                destination=state.destination,
+                target_date=state.date or "未确认日期",
+                origin=state.origin,
+                weather_summary=state.weather_summary or "暂无天气信息",
+                selected_route=state.selected_route,
+            )
+            travel_state_store.save(state)
+            return {
+                "type": "travel_plan",
+                "content": "我已经生成本地游玩计划，你可以接受，也可以说不想换乘/太远/太贵让我重规划。",
+                "plan": state.latest_plan.model_dump(),
+                "route_options": [route.model_dump() for route in state.route_options],
+            }
+
+        state.raw_goal = message
+        state.destination = self._extract_destination(message)
+        state.date_text, state.date = self.date_agent.parse(message)
+
+        if not state.destination:
+            travel_state_store.save(state)
+            return {"type": "message", "content": "你想去哪个本地地点玩？"}
+
+        if not state.date:
+            travel_state_store.save(state)
+            return {"type": "message", "content": "你想哪一天去？比如这周日、明天或下周六。"}
+
+        weather = self.weather_agent.check(city=None, target_date=state.date)
+        state.weather_ok = weather["ok"]
+        state.weather_summary = weather["summary"]
+
+        if not state.weather_ok:
+            travel_state_store.save(state)
+            return {
+                "type": "message",
+                "content": f"{state.date} 天气不太适合户外。建议换一天，你接受我推荐新日期吗？",
+                "alternative_dates": weather["alternative_dates"],
+            }
+
+        travel_state_store.save(state)
+        return {
+            "type": "message",
+            "content": f"{state.date_text} 是 {state.date}，天气可以。你从哪里出发？",
+        }
+
+    def _extract_destination(self, message: str) -> str | None:
+        if "西溪湿地" in message:
+            return "西溪湿地"
+        if "去" in message:
+            return message.split("去", 1)[1].replace("玩", "").strip("。 ，,")
+        return None
+
+    def _looks_like_origin(self, message: str) -> bool:
+        return any(keyword in message for keyword in ["出发", "从", "我在", "武林广场"])
+
+    def _is_invite_request(self, message: str) -> bool:
+        return any(keyword in message for keyword in ["发邮件", "约", "跟", "问他", "问她", "一起去"])
+
+
+travel_orchestrator = TravelOrchestrator()
+```
+
+### 7.9 修改 Travel API
+
+替换：
+
+```text
+app/api/v1/travel.py
+```
+
+写成：
+
+```python
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+from app.agents.travel.orchestrator import travel_orchestrator
+
+
+router = APIRouter()
+
+
+class TravelChatRequest(BaseModel):
+    message: str
+    thread_id: str = "default"
+    user_id: str | None = None
+
+
+@router.post("/travel/send")
+async def send_travel(request: TravelChatRequest):
+    return await travel_orchestrator.handle(
+        thread_id=request.thread_id,
+        message=request.message,
+        user_id=request.user_id,
+    )
+```
+
+### 7.10 启动并测试
+
+启动：
+
+```bash
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8003 --reload
+```
+
+测试第一轮：
+
+```bash
+curl -X POST http://127.0.0.1:8003/api/v1/travel/send \
+  -H "Content-Type: application/json" \
+  -d '{"message":"我想这周日去西溪湿地玩","thread_id":"demo"}'
+```
+
+预期返回：
+
+```json
+{
+  "type": "message",
+  "content": "这周日 是 2026-xx-xx，天气可以。你从哪里出发？"
+}
+```
+
+测试第二轮：
+
+```bash
+curl -X POST http://127.0.0.1:8003/api/v1/travel/send \
+  -H "Content-Type: application/json" \
+  -d '{"message":"从武林广场出发","thread_id":"demo"}'
+```
+
+预期返回：
+
+```json
+{
+  "type": "travel_plan",
+  "plan": {
+    "title": "西溪湿地本地游玩计划"
+  }
+}
+```
+
+测试第三轮：
+
+```bash
+curl -X POST http://127.0.0.1:8003/api/v1/travel/send \
+  -H "Content-Type: application/json" \
+  -d '{"message":"帮我跟 Adam 发邮件问他要不要一起去","thread_id":"demo"}'
+```
+
+预期返回：
+
+```json
+{
+  "type": "handoff_email",
+  "content": "可以，我会根据 latest_plan 交给 EmailAgent 生成邀约邮件草稿。"
+}
+```
+
+到这里，第一版本地玩乐多 Agent MVP 才算真的跑起来。
+
+## 阶段 8：把 mock Agent 换成 create_agent
+
+阶段 7 的代码先保证流程能跑。下一步再逐个替换：
+
+```text
+DateAgent mock      -> create_agent 输出结构化日期 JSON
+WeatherAgent mock   -> MCP weather tool + create_agent 判断天气风险
+RouteAgent mock     -> 高德地图 MCP + create_agent 总结路线
+PlannerAgent mock   -> create_agent 生成自然语言计划和结构化 plan
+```
+
+不要一次全换。推荐顺序：
+
+```text
+1. PlannerAgent
+2. DateAgent
+3. RouteAgent + 高德 MCP
+4. WeatherAgent
+5. EmailAgent handoff
+```
+
+每换一个 Agent，就重新跑 7.10 的三组 curl。
+
+## 阶段 9：接入 EmailAgent handoff
+
+阶段 7 里 `handoff_email` 只是返回信号，还没有真正调用 EmailAgent。等 Travel MVP 稳定后，再做：
+
+```text
+1. 从 latest_plan 生成 email_brief
+2. 调用 EmailAgent 的 /api/v1/chat/send
+3. EmailAgent 生成邮件草稿
+4. send_gmail_message 触发 interrupt
+5. 用户确认后才发送
+```
+
+第一版不要让 TravelOrchestrator 直接调用 Gmail 工具。邮件外部副作用必须留给 EmailAgent。
 
 ## 外部资料
 

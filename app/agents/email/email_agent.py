@@ -112,7 +112,7 @@ class EmailAgent:
         logger.info("email agent 初始化完成")
 
     async def init_checkpointer(self):
-        db_path = os.path.join(os.path.dirname(__file__), "../db/mail_friend.db")
+        db_path = os.path.join(os.path.dirname(__file__), "../../db/mail_friend.db")
         self.conn = await aiosqlite.connect(db_path)
         self.checkpointer = AsyncSqliteSaver(conn=self.conn)
         await self.checkpointer.setup()

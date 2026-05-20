@@ -7,15 +7,19 @@
 1. [项目概览](#1-项目概览)
 2. [架构设计](#2-架构设计)
 3. [环境准备](#3-环境准备)
-4. [Step 1：项目骨架](#step-1项目骨架)
-5. [Step 2：MCP 工具接入](#step-2mcp-工具接入)
-6. [Step 3：创建子 Agent](#step-3创建子-agent)
-7. [Step 4：Supervisor 编排](#step-4supervisor-编排)
-8. [Step 5：人工介入（HITL）](#step-5人工介入hitl)
-9. [Step 6：SSE 流式输出](#step-6sse-流式输出)
-10. [Step 7：FastAPI 接入](#step-7fastapi-接入)
-11. [Step 8：前端对接](#step-8前端对接)
-12. [附录：常见问题](#附录常见问题)
+4. [Step 1：项目骨架](#step-1项目骨架) — `logger.py`、`main.py`
+5. [Step 2：MCP 工具接入](#step-2mcp-工具接入) — `mcp_client.py`
+6. [Step 3 ~ 9：按文件编写代码](#step-3--9按文件编写代码) — **每个文件一份完整代码，直接复制**
+   - [`common/sse.py`](#appcommonssepy) — SSE 序列化工具
+   - [`models/schemas.py`](#appmodelsschemaspy) — 请求/响应模型
+   - [`models/session.py`](#appmodelssessionpy) — 会话管理（checkpointer + store）
+   - [`prompts.py`](#appagentstravelpromptspy) — 所有 prompt
+   - [`tools.py`](#appagentstraveltoolspy) — 邮件 + IP定位HITL + 长期记忆
+   - [`agents.py`](#appagentstravelagentspy) — 4 个子 agent + HITL middleware
+   - [`supervisor.py`](#appagentstravelsupervisorpy) — 核心：编排 + 流式调用（精简版）
+   - [`api/v1/travel.py`](#appapiv1travelpy) — FastAPI 路由
+   - [`static/index.html`](#appstaticindexhtmlscript-部分) — 前端多会话 + HITL 弹窗
+7. [附录：常见问题](#附录常见问题)
 
 ---
 
@@ -114,18 +118,22 @@ app/
 ├── main.py                     # FastAPI 入口
 ├── agents/
 │   └── travel/
-│       ├── supervisor.py       # TravelSupervisor 类（核心）
+│       ├── supervisor.py       # Supervisor 编排（只管编排 + 流式调用）
 │       ├── agents.py           # 4 个子 agent 定义
-│       ├── tools.py            # 自定义 tools（send_invite_email 等）
+│       ├── tools.py            # 自定义 tools（邮件、IP定位、记忆）
 │       ├── prompts.py          # 所有 prompt
 │       └── mcp_client.py       # MCP 工具获取
+├── models/
+│   ├── schemas.py              # 请求/响应 Pydantic 模型
+│   └── session.py              # 会话管理（checkpointer/store 初始化、历史查询）
 ├── api/v1/
 │   └── travel.py               # REST API
 ├── integrations/
 │   ├── gmail_auth.py           # Gmail OAuth
 │   └── gmail_tools.py          # Gmail 工具
 ├── common/
-│   └── logger.py
+│   ├── logger.py               # 日志
+│   └── sse.py                  # SSE 序列化工具函数
 └── static/
     └── index.html              # 前端
 ```
@@ -354,24 +362,210 @@ async def get_travel_tools() -> dict:
 
 ---
 
-## Step 3：创建子 Agent
+## Step 3 ~ 9：按文件编写代码
 
-每个子 agent 用 `create_agent` 创建，只需要指定模型、工具和 prompt。
+> **阅读方式变了！** 从这里开始，按**文件**组织，每个文件给出**完整最终版代码**，直接复制就能用。
+> 不再分散到多个 Step 里让你拼凑。
+
+每个文件标题下会标注它涉及的功能点：
+
+| 文件 | 包含的功能 |
+|------|-----------|
+| `common/sse.py` | SSE 序列化工具函数 |
+| `models/schemas.py` | 请求/响应 Pydantic 模型 |
+| `models/session.py` | 会话管理：checkpointer + store 初始化、历史查询、会话清除 |
+| `prompts.py` | 所有 agent 的 system prompt |
+| `tools.py` | 邮件工具 + IP定位 HITL 包装 + 长期记忆读写 |
+| `agents.py` | 4 个子 agent 定义（含 HITL middleware） |
+| `supervisor.py` | Supervisor 编排 + 流式调用（精简，依赖 session 和 sse 模块） |
+| `api/v1/travel.py` | FastAPI 路由 |
+| `static/index.html` | 前端（SSE + HITL 弹窗 + 多会话） |
+
+---
+
+### app/common/sse.py
+
+SSE 序列化工具，所有需要返回 SSE 事件的地方都用这个。
+
+```python
+# app/common/sse.py
+"""SSE（Server-Sent Events）序列化工具。"""
+
+import json
+
+
+def sse_event(event_type: str, content: str) -> dict:
+    """构造普通文本 SSE 事件。"""
+    return {
+        "event": event_type,
+        "data": json.dumps(
+            {"type": event_type, "content": content},
+            ensure_ascii=False,
+        ),
+    }
+
+
+def sse_json_event(event_type: str, payload: dict) -> dict:
+    """构造 JSON SSE 事件（用于 interrupt 等复杂数据）。"""
+    return {
+        "event": event_type,
+        "data": json.dumps(payload, ensure_ascii=False, default=str),
+    }
+
+
+def serialize(obj):
+    """将 LangGraph 对象（Interrupt、Command 等）转为可 JSON 序列化的格式。"""
+    if hasattr(obj, "value"):
+        return serialize(obj.value)
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, (list, tuple)):
+        return [serialize(item) for item in obj]
+    if isinstance(obj, dict):
+        return {key: serialize(value) for key, value in obj.items()}
+    return obj
+```
+
+---
+
+### app/models/schemas.py
+
+请求和响应的 Pydantic 模型，API 层和 Supervisor 都引用它。
+
+```python
+# app/models/schemas.py
+"""请求 / 响应数据模型。"""
+
+from typing import Any, Dict, Optional
+from pydantic import BaseModel
+
+
+class TravelRequest(BaseModel):
+    """出行对话请求。"""
+    message: str = ""
+    thread_id: str = "default"
+    interrupt_decision: Optional[Dict[str, Any]] = None
+```
+
+---
+
+### app/models/session.py
+
+会话管理：负责 checkpointer（短期记忆）和 store（长期记忆）的初始化，以及会话历史的读取/清除。
+
+Supervisor 只管编排，**不碰持久化细节**。
+
+```python
+# app/models/session.py
+"""会话管理：短期记忆（checkpointer）+ 长期记忆（store）。"""
+
+import os
+
+import aiosqlite
+from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.store.memory import InMemoryStore
+
+from app.common.logger import logger
+
+# 生产环境替换：
+# from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+# from langgraph.store.postgres import AsyncPostgresStore
+
+
+class SessionManager:
+    """管理所有会话的生命周期。
+
+    职责：
+    - 初始化 checkpointer（短期记忆，按 thread_id 隔离）
+    - 初始化 store（长期记忆，按 user_id 隔离）
+    - 查询某个会话的历史消息
+    - 清除某个会话
+    """
+
+    def __init__(self):
+        self.conn = None
+        self.checkpointer = None
+        self.store = InMemoryStore()  # 长期记忆（重启丢失，生产用 PostgresStore）
+
+    async def init(self):
+        """初始化 SQLite checkpointer。"""
+        db_path = os.path.join(
+            os.path.dirname(__file__), "../db/travel.db"
+        )
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        self.conn = await aiosqlite.connect(db_path)
+        self.checkpointer = AsyncSqliteSaver(conn=self.conn)
+        await self.checkpointer.setup()
+        logger.info("SessionManager 初始化完成 ✓")
+
+    async def close(self):
+        """关闭数据库连接。"""
+        if self.conn:
+            await self.conn.close()
+
+    async def get_messages(self, graph, thread_id: str) -> dict:
+        """获取某个会话的历史消息（前端切换会话时调用）。
+
+        Args:
+            graph: 编译后的 LangGraph 图（用来读 state）
+            thread_id: 会话 ID
+        Returns:
+            {"messages": [{"role": "user"|"assistant", "content": "..."}]}
+        """
+        if not graph:
+            return {"messages": []}
+
+        config = {"configurable": {"thread_id": thread_id}}
+        state = await graph.aget_state(config)
+        if not state or not state.values:
+            return {"messages": []}
+
+        result = []
+        for msg in state.values.get("messages", []):
+            content = msg.content if hasattr(msg, "content") else ""
+            if not content:
+                continue
+            if isinstance(msg, HumanMessage):
+                result.append({"role": "user", "content": content})
+            elif isinstance(msg, AIMessage):
+                result.append({"role": "assistant", "content": content})
+        return {"messages": result}
+
+    async def clear_messages(self, thread_id: str):
+        """清除某个会话的历史（前端删除会话时调用）。"""
+        if self.checkpointer:
+            await self.checkpointer.adelete_thread(thread_id)
+            logger.info(f"会话 {thread_id} 已清除")
+
+
+# 单例
+session_manager = SessionManager()
+```
+
+> **为什么 `get_messages` 需要传 `graph`？**
+> 因为 `aget_state` 是 graph 的方法——它从 checkpointer 里读状态，但需要知道 graph 的 schema 才能反序列化。
+> SessionManager 不持有 graph 引用（那是 Supervisor 的事），所以调用时传进来。
+
+---
 
 ### app/agents/travel/prompts.py
 
 ```python
+# app/agents/travel/prompts.py
+"""所有 Agent 的 System Prompt。"""
+
 SUPERVISOR_PROMPT = """你是 CityBuddy 出行企划的总协调者。
 
 ## 你的职责
 1. 和用户聊天，收集出行信息（目的地、日期）
-2. 用 maps_ip_location 自动获取用户当前位置作为出发地（系统会请求用户确认）
+2. 用 locate_user_by_ip 自动获取用户当前位置作为出发地（系统会请求用户确认）
 3. 信息收集齐后，**同时**派出天气、景点、路线三个专家去调研
 4. 三个专家都回来后，派 planner 生成出行方案
 5. 如果用户要约朋友，让 planner 处理邮件邀请
 
 ## 出发地规则
-- 不要主动问用户出发地，先调用 maps_ip_location 自动定位
+- 不要主动问用户出发地，先调用 locate_user_by_ip 自动定位
 - 如果用户拒绝定位或者定位不准，再问出发地
 - 如果用户主动说了出发地，直接用，不用定位
 
@@ -439,218 +633,25 @@ PLANNER_PROMPT = """你是行程规划专家。
 """
 ```
 
-### app/agents/travel/agents.py
-
-```python
-"""子 Agent 定义。每个 agent 专注一个领域。"""
-
-from langchain.agents import create_agent
-from app.agents.travel.prompts import (
-    WEATHER_PROMPT, POI_PROMPT, ROUTE_PROMPT, PLANNER_PROMPT,
-)
-
-
-def create_weather_agent(tools: list):
-    """天气调研 Agent。"""
-    return create_agent(
-        "deepseek-chat",
-        tools=tools,
-        name="weather_expert",
-        prompt=WEATHER_PROMPT,
-    )
-
-
-def create_poi_agent(tools: list):
-    """景点调研 Agent。"""
-    return create_agent(
-        "deepseek-chat",
-        tools=tools,
-        name="poi_expert",
-        prompt=POI_PROMPT,
-    )
-
-
-def create_route_agent(tools: list):
-    """路线规划 Agent。"""
-    return create_agent(
-        "deepseek-chat",
-        tools=tools,
-        name="route_expert",
-        prompt=ROUTE_PROMPT,
-    )
-
-
-def create_planner_agent(tools: list):
-    """行程规划 Agent（带邮件邀请工具）。"""
-    return create_agent(
-        "deepseek-chat",
-        tools=tools,
-        name="planner",
-        prompt=PLANNER_PROMPT,
-    )
-```
-
-> **注意**：这里的 `create_agent` 就是 LangChain 的 `langchain.agents.create_agent`，它返回一个编译好的 Agent 图。`name` 参数很重要——supervisor 用它来生成 handoff 工具名。
-
 ---
-
-## Step 4：Supervisor 编排
-
-这是整个项目的核心——用 `create_supervisor` 把 4 个子 agent 编排起来。
-
-### app/agents/travel/supervisor.py
-
-```python
-"""TravelSupervisor：用 create_supervisor 编排多个子 Agent。"""
-
-import json
-import os
-
-import aiosqlite
-from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.types import Command
-from langgraph_supervisor import create_supervisor
-
-from app.agents.travel.agents import (
-    create_weather_agent,
-    create_poi_agent,
-    create_route_agent,
-    create_planner_agent,
-)
-from app.agents.travel.mcp_client import get_travel_tools
-from app.agents.travel.prompts import SUPERVISOR_PROMPT
-from app.agents.travel.tools import send_invite_email
-from app.common.logger import logger
-
-
-class TravelSupervisor:
-    """出行企划 Supervisor。
-
-    用法和 EmailAgent 一样：
-    - init()：启动时调用
-    - generate_sse()：处理请求，返回 SSE 流
-    - close()：关闭资源
-    """
-
-    def __init__(self):
-        self.graph = None
-        self.conn = None
-        self.checkpointer = None
-
-    async def init(self):
-        """初始化：获取工具 → 创建子 Agent → 构建 Supervisor。"""
-        logger.info("TravelSupervisor 初始化中...")
-
-        # 1. 持久化
-        await self._init_checkpointer()
-
-        # 2. 获取 MCP 工具
-        tools = await get_travel_tools()
-        logger.info(
-            f"MCP 工具: weather={len(tools['weather'])}, "
-            f"poi={len(tools['poi'])}, route={len(tools['route'])}"
-        )
-
-        # 3. 创建子 Agent
-        weather_agent = create_weather_agent(tools["weather"])
-        poi_agent = create_poi_agent(tools["poi"])
-        route_agent = create_route_agent(tools["route"])
-        planner_agent = create_planner_agent([send_invite_email])
-
-        # 4. 创建 Supervisor（核心！）
-        #    - tools: supervisor 自己的工具（IP定位、地理编码）
-        #    - agents: 4 个子 agent，supervisor 自动生成 handoff 工具
-        #    - parallel_tool_calls: 允许一次调多个子 agent，自动并发
-        workflow = create_supervisor(
-            agents=[weather_agent, poi_agent, route_agent, planner_agent],
-            model="deepseek-chat",
-            prompt=SUPERVISOR_PROMPT,
-            tools=tools["supervisor"],  # maps_ip_location, maps_geo
-            parallel_tool_calls=True,   # 允许并发调多个子 agent
-            output_mode="full_history", # 保留完整对话历史
-        )
-
-        # 5. 编译（加 checkpointer 实现会话持久化）
-        self.graph = workflow.compile(checkpointer=self.checkpointer)
-        logger.info("TravelSupervisor 初始化完成 ✓")
-
-    async def _init_checkpointer(self):
-        db_path = os.path.join(os.path.dirname(__file__), "../../db/travel.db")
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self.conn = await aiosqlite.connect(db_path)
-        self.checkpointer = AsyncSqliteSaver(conn=self.conn)
-        await self.checkpointer.setup()
-
-    async def close(self):
-        if self.conn:
-            await self.conn.close()
-
-    # --- SSE 流式输出（见 Step 6）---
-    # --- 消息历史（见 Step 7）---
-
-
-# 单例
-travel_supervisor = TravelSupervisor()
-```
-
-> **就这么简单。** 对比旧架构：
-> - 没有 `StateGraph`、`add_node`、`add_edge`
-> - 没有 `Send()` fan-out / fan-in
-> - 没有条件边函数
-> - 没有 `entry_node`、`route_entry`、`should_research`、`after_planner`
-> - `create_supervisor` 一行搞定路由 + 并发 + handoff
-
----
-
-## Step 5：人工介入（HITL）
-
-本项目有 **两个人工介入点**，都通过 `HumanInTheLoopMiddleware` 实现。
-
-### HITL 1：IP 定位确认（Supervisor 层）
-
-```
-用户："我想去西湖玩"
-      │
-      ▼
-Supervisor 准备调用 maps_ip_location 获取用户位置
-      │
-      ▼
-HumanInTheLoopMiddleware 拦截！（隐私敏感操作）
-      │
-      ▼
-interrupt() 暂停 → 前端弹窗："是否允许获取你的位置？"
-      │
-      ├── ✅ 确认 → 执行 IP 定位 → 自动填入出发地
-      └── ❌ 拒绝 → Supervisor 改为直接问用户出发地
-```
-
-### HITL 2：邮件发送确认（Planner 层）
-
-```
-用户："帮我发邮件给乔治 xxx@gmail.com"
-      │
-      ▼
-Planner 调用 send_invite_email 工具
-      │
-      ▼
-HumanInTheLoopMiddleware 拦截！（不可撤回操作）
-      │
-      ▼
-interrupt() 暂停 → 前端弹窗展示：收件人、主题、正文
-      │
-      ├── ✅ 确认 → 执行工具 → Gmail API 发送
-      ├── ✏️ 修改 → 改参数后执行
-      └── ❌ 拒绝 → 取消发送，返回反馈给 Planner
-```
 
 ### app/agents/travel/tools.py
 
+包含：邮件发送工具、IP 定位 HITL 包装、长期记忆读写。
+
 ```python
-"""自定义工具：邮件邀请（带 HITL 确认）。"""
+# app/agents/travel/tools.py
+"""自定义工具：邮件邀请、IP 定位（HITL）、用户偏好记忆。"""
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langgraph.store.base import BaseStore
+from langgraph.types import interrupt
 
+
+# ============================================================
+# 1. 邮件邀请工具（Planner 调用，HITL 由 middleware 在外部拦截）
+# ============================================================
 
 @tool
 def send_invite_email(
@@ -659,19 +660,20 @@ def send_invite_email(
     subject: str,
     body: str,
 ) -> str:
-    """发送出行邀请邮件。系统会在发送前要求用户确认。
+    """发送出行邀请邮件给朋友。
 
     参数：
     - to_name: 收件人名字
     - to_email: 收件人邮箱
     - subject: 邮件主题
-    - body: 邮件正文
+    - body: 邮件正文（Markdown 格式）
     """
     from app.integrations.gmail_tools import get_gmail_tools
 
-    # 找到 Gmail 发送工具
     gmail_tools = get_gmail_tools()
-    send_tool = next((t for t in gmail_tools if t.name == "send_gmail_message"), None)
+    send_tool = next(
+        (t for t in gmail_tools if t.name == "send_gmail_message"), None
+    )
 
     if not send_tool:
         return "Gmail 未配置，无法发送邮件。请先完成 OAuth 授权。"
@@ -685,69 +687,18 @@ def send_invite_email(
         return f"邮件已成功发送给 {to_name}（{to_email}）！"
     except Exception as e:
         return f"邮件发送失败：{e}"
-```
-
-### 在两个地方启用 HITL
-
-修改 `agents.py`：
-
-```python
-from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 
-def create_planner_agent(tools: list):
-    """行程规划 Agent（send_invite_email 需要人工确认）。"""
-    return create_agent(
-        "deepseek-chat",
-        tools=tools,
-        name="planner",
-        prompt=PLANNER_PROMPT,
-        middleware=[
-            HumanInTheLoopMiddleware(
-                interrupt_on={
-                    "send_invite_email": True,  # 发邮件前必须确认
-                }
-            ),
-        ],
-    )
-```
-
-修改 `supervisor.py` 中的 `create_supervisor` 调用：
-
-```python
-from langchain.agents.middleware import HumanInTheLoopMiddleware
-
-workflow = create_supervisor(
-    agents=[weather_agent, poi_agent, route_agent, planner_agent],
-    model="deepseek-chat",
-    prompt=SUPERVISOR_PROMPT,
-    tools=tools["supervisor"],      # maps_ip_location, maps_geo
-    parallel_tool_calls=True,
-    output_mode="full_history",
-    # Supervisor 自身的 HITL：IP 定位需要确认
-    # 注意：这里通过 post_model_hook 实现，
-    # 因为 create_supervisor 的 tools 不走子 agent 的 middleware
-)
-```
-
-> **重要**：Supervisor 自身的工具（`maps_ip_location`）的 HITL 和子 agent 的 HITL 机制不同：
-> - **子 agent 的 HITL**：通过 `HumanInTheLoopMiddleware` 在 `create_agent` 上配置
-> - **Supervisor 的 HITL**：Supervisor 调用的 tools 由 `create_supervisor` 内部的 ToolNode 执行。需要通过 `interrupt_before=["tools"]` 或封装工具来实现
-
-更简洁的做法——把 `maps_ip_location` 包装成带 interrupt 的工具：
-
-```python
-# tools.py 中添加
-
-from langgraph.types import interrupt
-
+# ============================================================
+# 2. IP 定位工具（Supervisor 调用，内置 interrupt 实现 HITL）
+# ============================================================
 
 @tool
 def locate_user_by_ip(ip: str = "") -> str:
     """通过 IP 定位获取用户当前所在城市。
     调用前系统会请求用户确认（涉及位置隐私）。
     """
-    # HITL：暂停执行，等用户确认
+    # HITL：暂停执行，等用户在前端确认
     decision = interrupt({
         "type": "location_confirm",
         "message": "应用想要获取你的位置信息来确定出发地，是否允许？",
@@ -756,60 +707,220 @@ def locate_user_by_ip(ip: str = "") -> str:
     })
 
     if isinstance(decision, dict) and decision.get("type") == "approve":
-        # 用户同意 → 调用实际的高德 IP 定位
+        # 用户同意 → 调用实际的高德 IP 定位 MCP 工具
         from app.agents.travel.mcp_client import _ip_location_tool
         return _ip_location_tool.invoke({"ip": ip})
     else:
         return "用户拒绝了位置获取。请直接询问用户的出发地。"
+
+
+# ============================================================
+# 3. 长期记忆工具（任何 agent 都可以调用）
+# ============================================================
+
+@tool
+def save_user_preference(
+    preference_key: str,
+    preference_value: str,
+    config: RunnableConfig,
+    store: BaseStore,
+) -> str:
+    """保存用户偏好（如常用出发地、出行风格等）。"""
+    user_id = config["configurable"].get("user_id", "default")
+    namespace = ("user_preferences", user_id)
+
+    store.put(
+        namespace=namespace,
+        key=preference_key,
+        value={"data": preference_value},
+    )
+    return f"已保存偏好：{preference_key} = {preference_value}"
+
+
+@tool
+def get_user_preferences(
+    config: RunnableConfig,
+    store: BaseStore,
+) -> str:
+    """读取用户的所有偏好设置。"""
+    user_id = config["configurable"].get("user_id", "default")
+    namespace = ("user_preferences", user_id)
+
+    items = store.search(namespace)
+    if not items:
+        return "暂无保存的偏好。"
+    return "\n".join(f"- {item.key}: {item.value['data']}" for item in items)
 ```
 
-这样 Supervisor 的工具列表变成：
-
-```python
-workflow = create_supervisor(
-    agents=[weather_agent, poi_agent, route_agent, planner_agent],
-    model="deepseek-chat",
-    prompt=SUPERVISOR_PROMPT,
-    tools=[locate_user_by_ip, maps_geo_tool],  # 包装后的定位 + 原始地理编码
-    parallel_tool_calls=True,
-    output_mode="full_history",
-)
-```
-
-### 4 种用户决策
-
-| 决策 | 说明 | 适用场景 |
-|------|------|---------|
-| `approve` | 确认执行 | 允许定位 / 确认发邮件 |
-| `reject` | 拒绝并给反馈 | 拒绝定位（改为手动输入）/ 取消邮件 |
-| `edit` | 修改参数后执行 | 修改邮件主题或正文 |
-| `respond` | 直接回复 | 不常用，用于"ask user"场景 |
-
-### 前端处理两种 interrupt
-
-```javascript
-// interrupt 事件处理
-if (event === "interrupt") {
-  const data = payload.interrupt;
-
-  if (data.type === "location_confirm") {
-    // IP 定位确认弹窗
-    showLocationConfirmDialog(data.message);
-  } else {
-    // 邮件发送确认弹窗（从 action_requests 提取邮件详情）
-    showEmailConfirmDialog(data);
-  }
-}
-```
+> **为什么有两种 HITL 方式？**
+> - `send_invite_email`：工具本身是正常的，HITL 由 agents.py 里的 `HumanInTheLoopMiddleware` 在外部拦截
+> - `locate_user_by_ip`：工具内部直接调用 `interrupt()`，因为 Supervisor 自己的工具不走子 agent 的 middleware
 
 ---
 
-## Step 6：SSE 流式输出
+### app/agents/travel/agents.py
 
-在 `TravelSupervisor` 类中添加 `generate_sse` 方法：
+包含：4 个子 agent 定义，Planner 带 HITL middleware。
 
 ```python
-# supervisor.py 中添加
+# app/agents/travel/agents.py
+"""子 Agent 定义。每个 agent 专注一个领域。"""
+
+from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+
+from app.agents.travel.prompts import (
+    WEATHER_PROMPT,
+    POI_PROMPT,
+    ROUTE_PROMPT,
+    PLANNER_PROMPT,
+)
+
+
+def create_weather_agent(tools: list):
+    """天气调研 Agent（墨迹天气 MCP）。"""
+    return create_agent(
+        "deepseek-chat",
+        tools=tools,
+        name="weather_expert",
+        prompt=WEATHER_PROMPT,
+    )
+
+
+def create_poi_agent(tools: list):
+    """景点调研 Agent（高德搜索 MCP）。"""
+    return create_agent(
+        "deepseek-chat",
+        tools=tools,
+        name="poi_expert",
+        prompt=POI_PROMPT,
+    )
+
+
+def create_route_agent(tools: list):
+    """路线规划 Agent（高德路线 MCP）。"""
+    return create_agent(
+        "deepseek-chat",
+        tools=tools,
+        name="route_expert",
+        prompt=ROUTE_PROMPT,
+    )
+
+
+def create_planner_agent(tools: list):
+    """行程规划 Agent。
+
+    send_invite_email 被 HumanInTheLoopMiddleware 拦截，
+    调用时会 interrupt → 前端弹窗让用户确认/拒绝。
+    """
+    return create_agent(
+        "deepseek-chat",
+        tools=tools,
+        name="planner",
+        prompt=PLANNER_PROMPT,
+        middleware=[
+            HumanInTheLoopMiddleware(
+                interrupt_on={
+                    "send_invite_email": True,  # 发邮件前必须人工确认
+                }
+            ),
+        ],
+    )
+```
+
+> `create_agent` 是 LangChain 的 `langchain.agents.create_agent`，返回编译好的 Agent 图。
+> `name` 很重要——Supervisor 用它生成 handoff 工具名（如 `transfer_to_weather_expert`）。
+
+---
+
+### app/agents/travel/supervisor.py
+
+**只管编排 + 流式调用。** 持久化交给 `SessionManager`，SSE 序列化交给 `sse.py`。
+
+```python
+# app/agents/travel/supervisor.py
+"""TravelSupervisor：用 create_supervisor 编排多个子 Agent。"""
+
+from langgraph.types import Command
+from langgraph_supervisor import create_supervisor
+
+from app.agents.travel.agents import (
+    create_weather_agent,
+    create_poi_agent,
+    create_route_agent,
+    create_planner_agent,
+)
+from app.agents.travel.mcp_client import get_travel_tools
+from app.agents.travel.prompts import SUPERVISOR_PROMPT
+from app.agents.travel.tools import locate_user_by_ip, send_invite_email
+from app.common.logger import logger
+from app.common.sse import sse_event, sse_json_event, serialize
+from app.models.session import session_manager
+
+
+class TravelSupervisor:
+    """出行企划 Supervisor。
+
+    职责：
+    - 编排子 Agent（weather / poi / route / planner）
+    - 处理 SSE 流式输出
+    其他所有持久化 / 会话管理逻辑在 SessionManager 里。
+    """
+
+    def __init__(self):
+        self.graph = None
+
+    async def init(self):
+        """初始化：获取工具 → 创建子 Agent → 构建 Supervisor。"""
+        logger.info("TravelSupervisor 初始化中...")
+
+        # 1. 初始化会话管理（checkpointer + store）
+        await session_manager.init()
+
+        # 2. 获取 MCP 工具
+        tools = await get_travel_tools()
+        logger.info(
+            f"MCP 工具: weather={len(tools['weather'])}, "
+            f"poi={len(tools['poi'])}, route={len(tools['route'])}"
+        )
+
+        # 3. Supervisor 自己的工具
+        maps_geo_tool = next(
+            (t for t in tools["supervisor"] if t.name == "maps_geo"), None
+        )
+        supervisor_tools = [locate_user_by_ip]
+        if maps_geo_tool:
+            supervisor_tools.append(maps_geo_tool)
+
+        # 4. 创建子 Agent
+        weather_agent = create_weather_agent(tools["weather"])
+        poi_agent = create_poi_agent(tools["poi"])
+        route_agent = create_route_agent(tools["route"])
+        planner_agent = create_planner_agent([send_invite_email])
+
+        # 5. 创建 Supervisor
+        workflow = create_supervisor(
+            agents=[weather_agent, poi_agent, route_agent, planner_agent],
+            model="deepseek-chat",
+            prompt=SUPERVISOR_PROMPT,
+            tools=supervisor_tools,
+            parallel_tool_calls=True,
+            output_mode="full_history",
+        )
+
+        # 6. 编译（checkpointer + store 都来自 session_manager）
+        self.graph = workflow.compile(
+            checkpointer=session_manager.checkpointer,
+            store=session_manager.store,
+        )
+        logger.info("TravelSupervisor 初始化完成 ✓")
+
+    async def close(self):
+        await session_manager.close()
+
+    # ================================================================
+    # SSE 流式输出
+    # ================================================================
 
     async def generate_sse(
         self,
@@ -817,10 +928,15 @@ if (event === "interrupt") {
         message: str,
         interrupt_decision: dict | None = None,
     ):
-        """处理用户请求，返回 SSE 事件流。"""
-        config = {"configurable": {"thread_id": thread_id}}
+        """处理用户请求，yield SSE 事件。"""
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": "default",      # 多用户时替换
+            }
+        }
 
-        # --- 处理 HITL 恢复 ---
+        # HITL 恢复 or 正常消息
         if interrupt_decision:
             agent_input = Command(
                 resume={"decisions": [interrupt_decision]}
@@ -839,119 +955,60 @@ if (event === "interrupt") {
                 event_type = chunk["type"]
                 data = chunk["data"]
 
-                # --- 逐 token 流式输出 ---
                 if event_type == "messages":
                     token, metadata = data
-                    # 只输出 supervisor 的回复（不输出子 agent 内部对话）
                     node = metadata.get("langgraph_node", "")
-                    if node == "supervisor" and hasattr(token, "content") and token.content:
-                        yield _sse("message", token.content)
+                    if (
+                        node == "supervisor"
+                        and hasattr(token, "content")
+                        and token.content
+                    ):
+                        yield sse_event("message", token.content)
 
-                # --- 节点完成 / interrupt 事件 ---
                 elif event_type == "updates":
                     if "__interrupt__" in data:
-                        # HITL 中断：提取工具调用详情发给前端
                         for item in data["__interrupt__"]:
-                            value = item.value if hasattr(item, "value") else item
-                            yield _sse_json("interrupt", {
+                            value = (
+                                item.value
+                                if hasattr(item, "value")
+                                else item
+                            )
+                            yield sse_json_event("interrupt", {
                                 "type": "interrupt",
-                                "interrupt": _serialize(value),
+                                "interrupt": serialize(value),
                             })
 
-            yield _sse("done", "")
+            yield sse_event("done", "")
 
         except Exception as exc:
             logger.error(f"SSE 流错误: {exc}", exc_info=True)
-            yield _sse("error", str(exc))
-
-    async def get_messages(self, thread_id: str) -> dict:
-        """获取会话历史。"""
-        if not self.graph:
-            return {"messages": []}
-        config = {"configurable": {"thread_id": thread_id}}
-        state = await self.graph.aget_state(config)
-        if not state or not state.values:
-            return {"messages": []}
-
-        result = []
-        for msg in state.values.get("messages", []):
-            content = msg.content if hasattr(msg, "content") else ""
-            if not content:
-                continue
-            if isinstance(msg, HumanMessage):
-                result.append({"role": "user", "content": content})
-            elif isinstance(msg, AIMessage):
-                result.append({"role": "assistant", "content": content})
-        return {"messages": result}
-
-    async def clear_messages(self, thread_id: str):
-        """清除会话历史。"""
-        if self.checkpointer:
-            await self.checkpointer.adelete_thread(thread_id)
+            yield sse_event("error", str(exc))
 
 
-# --- SSE 辅助函数 ---
-
-def _sse(event_type: str, content: str) -> dict:
-    return {
-        "event": event_type,
-        "data": json.dumps(
-            {"type": event_type, "content": content},
-            ensure_ascii=False,
-        ),
-    }
-
-def _sse_json(event_type: str, payload: dict) -> dict:
-    return {
-        "event": event_type,
-        "data": json.dumps(payload, ensure_ascii=False, default=str),
-    }
-
-def _serialize(obj):
-    """将 LangGraph 对象转为可 JSON 序列化的格式。"""
-    if hasattr(obj, "value"):
-        return _serialize(obj.value)
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump()
-    if isinstance(obj, (list, tuple)):
-        return [_serialize(item) for item in obj]
-    if isinstance(obj, dict):
-        return {key: _serialize(value) for key, value in obj.items()}
-    return obj
+# 单例
+travel_supervisor = TravelSupervisor()
 ```
 
-### 流式输出说明
-
-| SSE 事件 | 说明 | 前端处理 |
-|---------|------|---------|
-| `message` | supervisor 的文字回复（逐 token） | 追加到聊天气泡 |
-| `interrupt` | HITL 中断，包含工具调用详情 | 弹出确认弹窗 |
-| `done` | 本轮处理完成 | 结束 loading |
-| `error` | 发生错误 | 显示错误提示 |
-
-> **为什么只输出 supervisor 节点的 token？** Supervisor 模式下，子 agent 的输出会被 supervisor 综合后再呈现给用户。直接输出子 agent 的内部对话会很混乱。`output_mode="full_history"` 保证 supervisor 能看到所有子 agent 的回复。
+> 对比旧架构：没有 `StateGraph`、没有 `add_node`/`add_edge`、没有 `Send()` fan-out、没有条件边函数。
+> 对比上一版 supervisor.py：没有 checkpointer 初始化、没有 SSE 工具函数、没有 get_messages/clear_messages。
+> **每个模块只干一件事。**
 
 ---
-
-## Step 7：FastAPI 接入
 
 ### app/api/v1/travel.py
 
 ```python
-from typing import Any, Dict, Optional
+# app/api/v1/travel.py
+"""出行企划 REST API。"""
+
 from fastapi import APIRouter
-from pydantic import BaseModel
 from sse_starlette import EventSourceResponse
 
 from app.agents.travel.supervisor import travel_supervisor
+from app.models.schemas import TravelRequest
+from app.models.session import session_manager
 
 router = APIRouter()
-
-
-class TravelRequest(BaseModel):
-    message: str = ""
-    thread_id: str = "default"
-    interrupt_decision: Optional[Dict[str, Any]] = None
 
 
 @router.post("/travel/send")
@@ -968,99 +1025,293 @@ async def send_travel(request: TravelRequest):
 
 @router.get("/travel/messages")
 async def get_messages(thread_id: str):
-    """获取会话历史。"""
-    return await travel_supervisor.get_messages(thread_id)
+    """获取会话历史（前端切换会话时调用）。"""
+    return await session_manager.get_messages(
+        graph=travel_supervisor.graph,
+        thread_id=thread_id,
+    )
 
 
 @router.delete("/travel/messages")
 async def clear_messages(thread_id: str):
-    """清除会话历史。"""
-    await travel_supervisor.clear_messages(thread_id)
+    """清除会话历史（前端删除会话时调用）。"""
+    await session_manager.clear_messages(thread_id)
     return {"status": "ok"}
 ```
 
+> 注意 `get_messages` 和 `clear_messages` 直接调 `session_manager`，不经过 `travel_supervisor`。
+> `TravelRequest` 从 `models/schemas.py` 导入，不在路由文件里定义。
+
 ---
 
-## Step 8：前端对接
+### app/static/index.html（`<script>` 部分）
 
-前端通过 SSE 接收流式响应，核心是处理 4 种事件：
+前端需要实现 3 个核心能力：SSE 流式接收、HITL 弹窗、多会话管理。
 
-### SSE 解析核心逻辑
+#### 多会话数据结构 + 管理
 
 ```javascript
-const response = await fetch("/api/v1/travel/send", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ message, thread_id, interrupt_decision }),
-});
+// ---- 数据 ----
+let sessions = JSON.parse(localStorage.getItem("travel_sessions") || "[]");
+let activeSessionId = null;
 
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-let buffer = "";
+// ---- 创建新会话 ----
+function createSession() {
+  const session = {
+    id: `travel-${Date.now()}`,    // 用作后端的 thread_id
+    title: "新会话",
+    createdAt: Date.now(),
+  };
+  sessions.unshift(session);
+  saveSessions();
+  switchToSession(session.id);
+}
 
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  buffer += decoder.decode(value, { stream: true });
+function saveSessions() {
+  localStorage.setItem("travel_sessions", JSON.stringify(sessions));
+}
 
-  // SSE 以双换行分隔
-  const parts = buffer.split(/\r?\n\r?\n/);
-  buffer = parts.pop() || "";
+// ---- 切换会话（核心！从后端加载历史消息）----
+async function switchToSession(sessionId) {
+  activeSessionId = sessionId;
+  clearChatArea();
+  renderSessionList();
+  await loadSessionMessages(sessionId);  // 从后端拉历史
+}
 
-  for (const part of parts) {
-    const { event, data } = parseSseBlock(part);
-    const payload = JSON.parse(data);
+// ---- 删除会话 ----
+async function deleteSession(sessionId) {
+  await fetch(`/api/v1/travel/messages?thread_id=${sessionId}`, {
+    method: "DELETE",
+  });
+  sessions = sessions.filter(s => s.id !== sessionId);
+  saveSessions();
 
-    switch (event) {
-      case "message":
-        // 追加到聊天气泡（流式）
-        appendToCurrentBubble(payload.content);
-        break;
+  if (activeSessionId === sessionId) {
+    sessions.length > 0 ? switchToSession(sessions[0].id) : createSession();
+  }
+  renderSessionList();
+}
+```
 
-      case "interrupt":
-        // 弹出 HITL 确认弹窗
-        showEmailConfirmDialog(payload.interrupt);
-        break;
+#### 从后端加载历史消息
 
-      case "done":
-        // 结束 loading 状态
-        finishLoading();
-        break;
+```javascript
+async function loadSessionMessages(sessionId) {
+  try {
+    const resp = await fetch(`/api/v1/travel/messages?thread_id=${sessionId}`);
+    const { messages } = await resp.json();
 
-      case "error":
-        // 显示错误
-        showError(payload.content);
-        break;
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        appendUserBubble(msg.content);
+      } else if (msg.role === "assistant") {
+        appendAssistantBubble(msg.content);
+      }
+    }
+    scrollToBottom();
+  } catch (err) {
+    console.error("加载历史消息失败:", err);
+  }
+}
+```
+
+#### 侧栏会话列表
+
+```javascript
+function renderSessionList() {
+  const listEl = document.getElementById("session-list");
+  listEl.innerHTML = "";
+
+  for (const session of sessions) {
+    const item = document.createElement("div");
+    item.className = "session-item"
+      + (session.id === activeSessionId ? " active" : "");
+    item.innerHTML = `
+      <span class="session-title">${session.title}</span>
+      <span class="session-date">
+        ${new Date(session.createdAt).toLocaleDateString()}
+      </span>
+      <button class="delete-btn"
+        onclick="event.stopPropagation(); deleteSession('${session.id}')">×</button>
+    `;
+    item.onclick = () => switchToSession(session.id);
+    listEl.appendChild(item);
+  }
+}
+```
+
+#### SSE 流式接收
+
+```javascript
+async function sendMessage(message, interruptDecision = null) {
+  if (!activeSessionId) createSession();
+
+  const response = await fetch("/api/v1/travel/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      thread_id: activeSessionId,
+      interrupt_decision: interruptDecision,
+    }),
+  });
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() || "";
+
+    for (const part of parts) {
+      const { event, data } = parseSseBlock(part);
+      const payload = JSON.parse(data);
+
+      switch (event) {
+        case "message":
+          appendToCurrentBubble(payload.content);
+          break;
+        case "interrupt":
+          showInterruptDialog(payload.interrupt);
+          break;
+        case "done":
+          finishLoading();
+          break;
+        case "error":
+          showError(payload.content);
+          break;
+      }
+    }
+  }
+
+  // 更新会话标题（用第一条消息的前 20 个字）
+  if (message) {
+    const session = sessions.find(s => s.id === activeSessionId);
+    if (session && session.title === "新会话") {
+      session.title = message.slice(0, 20) + (message.length > 20 ? "..." : "");
+      saveSessions();
+      renderSessionList();
     }
   }
 }
 ```
 
-### HITL 确认弹窗
+#### HITL 中断弹窗（两种类型）
 
 ```javascript
-function showEmailConfirmDialog(interruptData) {
-  // interruptData 包含 action_requests，其中有工具调用参数
-  // 从中提取 to_email, subject, body 展示给用户
+function showInterruptDialog(interruptData) {
+  const type = interruptData.type;
 
-  // 用户确认
-  confirmButton.onclick = () => {
-    sendToAgent({
-      interrupt_decision: { type: "approve" }
-    });
-  };
+  if (type === "location_confirm") {
+    // ---- IP 定位确认 ----
+    showLocationConfirm(interruptData);
+  } else {
+    // ---- 邮件发送确认 ----
+    showEmailConfirm(interruptData);
+  }
+}
 
-  // 用户拒绝
-  rejectButton.onclick = () => {
-    sendToAgent({
-      interrupt_decision: {
-        type: "reject",
-        message: rejectReasonInput.value,
-      }
-    });
-  };
+function showLocationConfirm(data) {
+  const panel = createInterruptPanel({
+    title: "📍 位置权限请求",
+    message: data.message,
+    onApprove: () => sendMessage(null, { type: "approve" }),
+    onReject: () => sendMessage(null, { type: "reject" }),
+  });
+  showPanel(panel);
+}
+
+function showEmailConfirm(data) {
+  const panel = createInterruptPanel({
+    title: "📧 邮件发送确认",
+    message: `收件人：${data.to_name}（${data.to_email}）\n主题：${data.subject}`,
+    detail: data.body,
+    onApprove: () => sendMessage(null, { type: "approve" }),
+    onReject: (reason) => sendMessage(null, { type: "reject", message: reason }),
+    showRejectReason: true,
+  });
+  showPanel(panel);
 }
 ```
+
+#### 页面初始化
+
+```javascript
+window.addEventListener("DOMContentLoaded", () => {
+  sessions = JSON.parse(localStorage.getItem("travel_sessions") || "[]");
+
+  if (sessions.length > 0) {
+    switchToSession(sessions[0].id);   // 恢复上次会话
+  } else {
+    createSession();                   // 首次使用，创建新会话
+  }
+  renderSessionList();
+});
+```
+
+> **多会话完整数据流**：
+> ```
+> 用户点击侧栏 "西湖出行"
+>   → switchToSession("travel-xxx")
+>   → clearChatArea()
+>   → GET /travel/messages?thread_id=travel-xxx
+>   → 后端 graph.aget_state(config) 从 checkpointer 读取
+>   → 返回 [{role: "user", ...}, {role: "assistant", ...}]
+>   → 前端逐条渲染到聊天区域
+>   → 用户继续发消息 → POST /travel/send（带 thread_id）
+>   → checkpointer 自动续接对话上下文
+> ```
+
+---
+
+### 两种 HITL 机制对比
+
+| | IP 定位（Supervisor 层） | 邮件发送（Planner 层） |
+|---|---|---|
+| **工具** | `locate_user_by_ip` | `send_invite_email` |
+| **HITL 方式** | 工具内部调用 `interrupt()` | `HumanInTheLoopMiddleware` 外部拦截 |
+| **为什么不同** | Supervisor 的工具不走子 agent 的 middleware | 子 agent 的工具可以被 middleware 拦截 |
+| **前端弹窗** | 简单的 允许/拒绝 | 展示邮件内容 + 允许/拒绝/修改 |
+
+### 记忆系统总结
+
+```
+┌───────────────────────────────────────────────┐
+│              用户发消息                          │
+│                  │                              │
+│    ┌─────────────┴─────────────┐                │
+│    │                           │                │
+│    ▼                           ▼                │
+│  checkpointer               store               │
+│  (短期记忆)                (长期记忆)             │
+│                                                 │
+│  • thread_id 隔离           • user_id 隔离       │
+│  • 自动保存/恢复对话         • 手动 put / search   │
+│  • 支持 interrupt 续传       • 跨会话持久化        │
+│  • SQLite / PostgreSQL      • InMemory / PG      │
+│                                                 │
+│  场景：同一会话多轮对话      场景：用户偏好         │
+│        HITL 中断恢复              历史行程         │
+│        前端会话历史展示           常用出发地         │
+└───────────────────────────────────────────────┘
+```
+
+### SSE 事件类型
+
+| SSE 事件 | 说明 | 前端处理 |
+|---------|------|---------|
+| `message` | supervisor 的文字回复（逐 token） | 追加到聊天气泡 |
+| `interrupt` | HITL 中断，包含工具调用详情 | 弹出确认弹窗 |
+| `done` | 本轮处理完成 | 结束 loading |
+| `error` | 发生错误 | 显示错误提示 |
+
+> **为什么只输出 supervisor 节点的 token？** 子 agent 的内部对话会被 supervisor 综合后再呈现给用户。`output_mode="full_history"` 保证 supervisor 能看到所有子 agent 的回复，但前端只展示 supervisor 的最终输出。
 
 ---
 
@@ -1102,3 +1353,28 @@ self.graph = workflow.compile(checkpointer=self.checkpointer, debug=True)
 ```
 
 或者在 `generate_sse` 里打印 updates 事件，能看到 supervisor 调了哪些子 agent。
+
+### Q：InMemoryStore 重启就丢了，怎么持久化？
+
+开发阶段用 `InMemoryStore` 够了。生产环境换 `AsyncPostgresStore`：
+
+```python
+from langgraph.store.postgres import AsyncPostgresStore
+
+store = await AsyncPostgresStore.from_conn_string("postgresql://user:pass@localhost/db")
+```
+
+接口完全一致，`put` / `search` / `get` 不用改。
+
+### Q：checkpointer 和 store 有什么区别？
+
+| | checkpointer | store |
+|---|---|---|
+| **自动 vs 手动** | 自动——graph 每走一步自动保存 | 手动——需要在代码里 `put` / `search` |
+| **隔离维度** | `thread_id`（会话） | `namespace`（自定义，通常按 `user_id`） |
+| **典型数据** | 消息历史、graph 状态、interrupt 断点 | 用户偏好、历史行程、常用地址 |
+| **跨会话** | ❌ 每个 thread 独立 | ✅ 同一 user 的所有会话共享 |
+
+### Q：多会话前端用 localStorage 够吗？
+
+够——session 列表本身很轻量（只有 id + title + timestamp），实际的对话数据存在后端 checkpointer 里。前端只负责维护"哪些会话存在"以及"当前激活哪个"。切换会话时从后端拉历史消息即可。

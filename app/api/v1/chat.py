@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from sse_starlette import EventSourceResponse
 
-from app.agents.email_agent import email_agent
+from app.agents.email.email_agent import email_agent
 from app.models.schemas import ChatRequest
 
 

@@ -414,6 +414,7 @@
       border-color: #f0c7c1;
     }
 
+    .plan-panel,
     .interrupt {
       margin: 0 24px 16px;
       padding: 14px;
@@ -423,13 +424,55 @@
       box-shadow: var(--shadow);
     }
 
+    .plan-panel {
+      border-color: var(--line-strong);
+      background: var(--panel);
+    }
+
+    .plan-panel.hidden,
     .interrupt.hidden {
       display: none;
     }
 
+    .plan-panel h3,
     .interrupt h3 {
       margin: 0 0 8px;
       font-size: 15px;
+    }
+
+    .plan-panel p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .plan-options,
+    .email-fields {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .email-fields {
+      margin-top: 12px;
+      align-items: center;
+    }
+
+    .email-fields input {
+      min-height: 38px;
+      min-width: 210px;
+      border-radius: 8px;
+      border: 1px solid var(--line-strong);
+      padding: 8px 10px;
+      background: #fff;
+    }
+
+    .email-fields.hidden {
+      display: none;
+    }
+
+    .plan-options.hidden {
+      display: none;
     }
 
     .email-preview {
@@ -557,11 +600,6 @@
       </div>
 
       <div class="sidebar-body">
-        <div class="mode-switch" aria-label="选择助手模式">
-          <button id="travelModeBtn" class="mode-btn active" type="button">出行</button>
-          <button id="mailModeBtn" class="mode-btn" type="button">邮件</button>
-        </div>
-
         <button id="newThreadBtn" class="primary-btn" type="button">新建出行会话</button>
 
         <div id="sessionListContainer" class="session-list">
@@ -592,8 +630,23 @@
         </div>
       </section>
 
+      <section id="planPanel" class="plan-panel hidden">
+        <h3 id="planPanelTitle">选择方案</h3>
+        <p id="planPanelText">选定一个方案后，我会整理最终版。</p>
+        <div id="planOptions" class="plan-options">
+          <button class="ghost-btn plan-choice" type="button" data-plan="方案一">方案一</button>
+          <button class="ghost-btn plan-choice" type="button" data-plan="方案二">方案二</button>
+          <button class="ghost-btn plan-choice" type="button" data-plan="方案三">方案三</button>
+        </div>
+        <div id="emailFields" class="email-fields hidden">
+          <input id="friendNameInput" type="text" placeholder="朋友名字">
+          <input id="friendEmailInput" type="email" placeholder="朋友邮箱">
+          <button id="inviteFriendBtn" class="primary-btn" type="button">生成邀请邮件</button>
+        </div>
+      </section>
+
       <section id="interruptPanel" class="interrupt hidden">
-        <h3>📧 邮件发送需要确认</h3>
+        <h3 id="interruptTitle">需要确认</h3>
         <div id="emailPreview" class="email-preview" style="display:none;">
           <div class="email-field"><span class="email-label">收件人：</span><span id="emailTo"></span></div>
           <div class="email-field"><span class="email-label">主题：</span><span id="emailSubject"></span></div>
@@ -603,8 +656,8 @@
         <p id="interruptText"></p>
         <textarea id="rejectReason" placeholder="如果拒绝，可以写下需要调整的原因。"></textarea>
         <div class="interrupt-actions">
-          <button id="approveBtn" class="primary-btn" type="button">✅ 确认发送</button>
-          <button id="rejectBtn" class="danger-btn" type="button">❌ 拒绝并修改</button>
+          <button id="approveBtn" class="primary-btn" type="button">确认</button>
+          <button id="rejectBtn" class="danger-btn" type="button">拒绝</button>
         </div>
       </section>
 
@@ -625,32 +678,39 @@
       chatForm: document.getElementById("chatForm"),
       sendBtn: document.getElementById("sendBtn"),
       newThreadBtn: document.getElementById("newThreadBtn"),
-      travelModeBtn: document.getElementById("travelModeBtn"),
-      mailModeBtn: document.getElementById("mailModeBtn"),
       statusPill: document.getElementById("statusPill"),
       sessionListContainer: document.getElementById("sessionListContainer"),
       interruptPanel: document.getElementById("interruptPanel"),
+      interruptTitle: document.getElementById("interruptTitle"),
       interruptText: document.getElementById("interruptText"),
       rejectReason: document.getElementById("rejectReason"),
       approveBtn: document.getElementById("approveBtn"),
       rejectBtn: document.getElementById("rejectBtn"),
+      planPanel: document.getElementById("planPanel"),
+      planPanelTitle: document.getElementById("planPanelTitle"),
+      planPanelText: document.getElementById("planPanelText"),
+      planOptions: document.getElementById("planOptions"),
+      emailFields: document.getElementById("emailFields"),
+      friendNameInput: document.getElementById("friendNameInput"),
+      friendEmailInput: document.getElementById("friendEmailInput"),
+      inviteFriendBtn: document.getElementById("inviteFriendBtn"),
     };
 
     // ---- 会话管理 ----
-    // 每个模式维护一个会话列表：[{id, name, createdAt}, ...]
-    function loadSessions(mode) {
+    // 本页面只维护出行会话；邮件发送是出行方案后的 HITL 动作。
+    function loadSessions() {
       try {
-        return JSON.parse(localStorage.getItem(`tripcrew_${mode}_sessions`) || "[]");
+        return JSON.parse(localStorage.getItem("tripcrew_travel_sessions") || "[]");
       } catch { return []; }
     }
 
-    function saveSessions(mode, sessions) {
-      localStorage.setItem(`tripcrew_${mode}_sessions`, JSON.stringify(sessions));
+    function saveSessions(sessions) {
+      localStorage.setItem("tripcrew_travel_sessions", JSON.stringify(sessions));
     }
 
-    function ensureCurrentSession(mode) {
-      let sessions = loadSessions(mode);
-      let activeId = localStorage.getItem(`tripcrew_${mode}_active`);
+    function ensureCurrentSession() {
+      let sessions = loadSessions();
+      let activeId = localStorage.getItem("tripcrew_travel_active");
       // 如果没有任何会话或 activeId 不在列表里，创建一个
       if (!sessions.length) {
         const newSession = {
@@ -659,42 +719,29 @@
           createdAt: Date.now(),
         };
         sessions.unshift(newSession);
-        saveSessions(mode, sessions);
+        saveSessions(sessions);
         activeId = newSession.id;
-        localStorage.setItem(`tripcrew_${mode}_active`, activeId);
+        localStorage.setItem("tripcrew_travel_active", activeId);
       } else if (!sessions.find(s => s.id === activeId)) {
         activeId = sessions[0].id;
-        localStorage.setItem(`tripcrew_${mode}_active`, activeId);
+        localStorage.setItem("tripcrew_travel_active", activeId);
       }
       return activeId;
     }
 
     const state = {
-      mode: localStorage.getItem("tripcrew_mode") || "travel",
       busy: false,
       pendingInterrupt: null,
+      selectedPlan: null,
     };
 
-    // 初始化两个模式的会话
-    ensureCurrentSession("travel");
-    ensureCurrentSession("mail");
+    ensureCurrentSession();
 
     function currentThreadId() {
-      return localStorage.getItem(`tripcrew_${state.mode}_active`);
+      return localStorage.getItem("tripcrew_travel_active");
     }
 
     function modeConfig() {
-      if (state.mode === "mail") {
-        return {
-          title: "邮件助手",
-          subtitle: "输入你的邮件需求，我会帮你处理邮箱任务。",
-          placeholder: "输入你的邮件需求",
-          emptyTitle: "开始处理邮件",
-          emptyText: "告诉我需要查找、阅读、起草或发送的邮件任务。",
-          newThreadText: "新建邮件会话",
-          busyText: "处理中",
-        };
-      }
       return {
         title: "出行企划助手",
         subtitle: "输入你的出行想法，我会整理成可执行的城市行程。",
@@ -713,12 +760,13 @@
     }
 
     function historyEndpoint() {
-      return state.mode === "mail" ? "/api/v1/chat/messages" : "/api/v1/travel/messages";
+      return "/api/v1/travel/messages";
     }
 
     async function loadActiveSessionMessages() {
       renderEmptyState();
       hideInterrupt();
+      hidePlanPanel();
       try {
         const response = await fetch(`${historyEndpoint()}?thread_id=${encodeURIComponent(currentThreadId())}`);
         if (!response.ok) return;
@@ -741,7 +789,7 @@
     }
 
     function renderSessionList() {
-      const sessions = loadSessions(state.mode);
+      const sessions = loadSessions();
       const activeId = currentThreadId();
       // 清空列表（保留 label）
       els.sessionListContainer.innerHTML = '<div class="session-list-label">会话列表</div>';
@@ -758,7 +806,7 @@
         item.addEventListener("click", (e) => {
           if (e.target.classList.contains("session-delete")) return;
           if (state.busy || s.id === activeId) return;
-          localStorage.setItem(`tripcrew_${state.mode}_active`, s.id);
+          localStorage.setItem("tripcrew_travel_active", s.id);
           renderSessionList();
           els.statusPill.textContent = "就绪";
           loadActiveSessionMessages();
@@ -771,11 +819,11 @@
           const deletingActive = s.id === activeId;
           try {
             await fetch(`${historyEndpoint()}?thread_id=${encodeURIComponent(s.id)}`, { method: "DELETE" });
-            let updatedSessions = loadSessions(state.mode).filter(x => x.id !== s.id);
-            saveSessions(state.mode, updatedSessions);
+            let updatedSessions = loadSessions().filter(x => x.id !== s.id);
+            saveSessions(updatedSessions);
             if (deletingActive) {
-              const nextId = ensureCurrentSession(state.mode);
-              localStorage.setItem(`tripcrew_${state.mode}_active`, nextId);
+              const nextId = ensureCurrentSession();
+              localStorage.setItem("tripcrew_travel_active", nextId);
             }
             renderSessionList();
             await loadActiveSessionMessages();
@@ -789,9 +837,6 @@
 
     function applyMode() {
       const config = modeConfig();
-      localStorage.setItem("tripcrew_mode", state.mode);
-      els.travelModeBtn.classList.toggle("active", state.mode === "travel");
-      els.mailModeBtn.classList.toggle("active", state.mode === "mail");
       document.querySelector(".topbar h2").textContent = config.title;
       document.querySelector(".topbar p").textContent = config.subtitle;
       els.messageInput.placeholder = config.placeholder;
@@ -819,6 +864,41 @@
 
     function scrollToBottom() {
       els.messages.scrollTop = els.messages.scrollHeight;
+    }
+
+    function hasSelectablePlans(content) {
+      // 交通方式选择在聊天里完成，不弹面板
+      return false;
+    }
+
+    function showPlanPanel() {
+      state.selectedPlan = null;
+      els.planPanelTitle.textContent = "选择方案";
+      els.planPanelText.textContent = "选定一个方案后，我会整理最终版。";
+      els.planOptions.classList.remove("hidden");
+      els.emailFields.classList.add("hidden");
+      els.friendNameInput.value = "";
+      els.friendEmailInput.value = "";
+      els.planPanel.classList.remove("hidden");
+      els.planPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function hidePlanPanel() {
+      els.planPanel.classList.add("hidden");
+      els.planOptions.classList.remove("hidden");
+      els.emailFields.classList.add("hidden");
+      state.selectedPlan = null;
+    }
+
+    function showCompanionPanel() {
+      els.planPanelTitle.textContent = "发送给同伴";
+      els.planPanelText.textContent = "如果要邀请同伴，填写名字和邮箱，我会先生成邮件并让你确认。";
+      els.planOptions.classList.add("hidden");
+      els.emailFields.classList.remove("hidden");
+      els.friendNameInput.value = "";
+      els.friendEmailInput.value = "";
+      els.planPanel.classList.remove("hidden");
+      els.planPanel.scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     function addMessage(role, content, kind = "") {
@@ -863,19 +943,34 @@
       const emailSubject = document.getElementById("emailSubject");
       const emailBody = document.getElementById("emailBody");
 
-      // 新结构：payload 直接就是 {type:"email_confirm", to, to_name, subject, body}
-      // 兼容旧结构：payload.interrupt 可能包裹一层
-      const info = payload.type === "email_confirm" ? payload : (payload.interrupt || payload);
+      let info = payload.type === "email_confirm" ? payload : (payload.interrupt || payload);
+      if (Array.isArray(info)) {
+        info = info[0] || {};
+      }
+      const actionRequest = Array.isArray(info.action_requests) ? info.action_requests[0] : null;
+      const args = actionRequest?.args || {};
 
-      if (info.to && info.subject && info.body) {
-        emailTo.textContent = `${info.to_name || ""} (${info.to})`;
-        emailSubject.textContent = info.subject;
-        emailBody.textContent = info.body;
+      if (info.type === "location_confirm") {
+        els.interruptTitle.textContent = "位置权限确认";
+        emailPreview.style.display = "none";
+        els.interruptText.textContent = info.message || "是否允许系统获取当前位置来确定出发地？";
+        els.approveBtn.textContent = "允许";
+        els.rejectBtn.textContent = "拒绝";
+      } else if (info.to || info.to_email || args.to_email || args.to) {
+        els.interruptTitle.textContent = "邮件发送确认";
+        emailTo.textContent = `${info.to_name || args.to_name || ""} (${info.to_email || info.to || args.to_email || args.to || ""})`;
+        emailSubject.textContent = info.subject || args.subject || "";
+        emailBody.textContent = info.body || args.body || args.message || "";
         emailPreview.style.display = "block";
         els.interruptText.textContent = "请确认以上邮件内容，确认后将发送。";
+        els.approveBtn.textContent = "确认发送";
+        els.rejectBtn.textContent = "拒绝并修改";
       } else {
+        els.interruptTitle.textContent = "操作确认";
         emailPreview.style.display = "none";
-        els.interruptText.textContent = "已生成邮件发送请求，请确认是否继续。";
+        els.interruptText.textContent = "这个操作需要你确认后继续。";
+        els.approveBtn.textContent = "确认";
+        els.rejectBtn.textContent = "拒绝";
       }
 
       els.interruptPanel.classList.remove("hidden");
@@ -899,10 +994,10 @@
       return { event, data: dataLines.join("\n") };
     }
 
-    async function sendToAgent({ message = "", interruptDecision = null } = {}) {
+    async function sendToAgent({ message = "", interruptDecision = null, showPlanChoices = true } = {}) {
       setBusy(true);
       try {
-        const endpoint = state.mode === "mail" ? "/api/v1/chat/send" : "/api/v1/travel/send";
+        const endpoint = "/api/v1/travel/send";
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -921,6 +1016,12 @@
         const decoder = new TextDecoder();
         let buffer = "";
         let streamingBubble = null;
+        let assistantContent = "";
+        let firstEventReceived = false;
+
+        // 立刻显示等待状态
+        const thinkingMsg = addMessage("assistant", "规划中...", "status-msg");
+        els.statusPill.textContent = "规划中...";
 
         while (true) {
           const { done, value } = await reader.read();
@@ -940,26 +1041,56 @@
               payload = { content: data };
             }
 
+            // 第一个事件到达时移除"规划中..."
+            if (!firstEventReceived) {
+              firstEventReceived = true;
+              thinkingMsg.remove();
+            }
+
             if (event === "message" || event === "message_delta") {
-              if (!streamingBubble) {
-                streamingBubble = addMessage("assistant", "");
+              const delta = typeof payload.content === "string" ? payload.content : "";
+              if (delta && delta.trim()) {
+                if (!streamingBubble) {
+                  streamingBubble = addMessage("assistant", "");
+                }
+                assistantContent += delta;
+                appendToBubble(streamingBubble, delta);
               }
-              appendToBubble(streamingBubble, payload.content || "");
             } else if (event === "message_end") {
               streamingBubble = null;
             } else if (event === "status") {
               streamingBubble = null;
-              addMessage("assistant", payload.content || "", "status-msg");
-              els.statusPill.textContent = payload.content || modeConfig().busyText;
+              const statusText = payload.content || "";
+              if (statusText) {
+                addMessage("assistant", statusText, "status-msg");
+                els.statusPill.textContent = statusText;
+              }
             } else if (event === "interrupt") {
               streamingBubble = null;
-              addMessage("assistant", "邮件发送前需要你确认。", "status-msg");
-              showInterrupt(payload.interrupt || payload);
+              const interruptPayload = payload.interrupt || payload;
+              let interruptInfo = interruptPayload.interrupt || interruptPayload;
+              if (Array.isArray(interruptInfo)) {
+                interruptInfo = interruptInfo[0] || {};
+              }
+              const actionRequest = Array.isArray(interruptInfo.action_requests) ? interruptInfo.action_requests[0] : null;
+              const args = actionRequest?.args || {};
+              const isEmailInterrupt = interruptInfo.to || interruptInfo.to_email || args.to_email || args.to;
+              addMessage(
+                "assistant",
+                interruptInfo.type === "location_confirm"
+                  ? "需要你确认是否允许定位。"
+                  : (isEmailInterrupt ? "邮件发送前需要你确认。" : "这个操作需要你确认。"),
+                "status-msg"
+              );
+              showInterrupt(interruptPayload);
             } else if (event === "error") {
               streamingBubble = null;
               addMessage("assistant", payload.content || payload.error || "请求出错", "error-msg");
             } else if (event === "done") {
               streamingBubble = null;
+              if (showPlanChoices && !interruptDecision && hasSelectablePlans(assistantContent)) {
+                showPlanPanel();
+              }
             }
           }
         }
@@ -978,11 +1109,11 @@
       addMessage("user", message);
 
       // 用第一条消息更新会话名
-      const sessions = loadSessions(state.mode);
+      const sessions = loadSessions();
       const active = sessions.find(s => s.id === currentThreadId());
       if (active && active.name.startsWith("会话 ")) {
         active.name = message.slice(0, 20) + (message.length > 20 ? "..." : "");
-        saveSessions(state.mode, sessions);
+        saveSessions(sessions);
         renderSessionList();
       }
 
@@ -998,44 +1129,86 @@
 
     els.newThreadBtn.addEventListener("click", () => {
       if (state.busy) return;
-      const sessions = loadSessions(state.mode);
+      const sessions = loadSessions();
       const newSession = {
         id: crypto.randomUUID(),
         name: `会话 ${sessions.length + 1}`,
         createdAt: Date.now(),
       };
       sessions.unshift(newSession);
-      saveSessions(state.mode, sessions);
-      localStorage.setItem(`tripcrew_${state.mode}_active`, newSession.id);
+      saveSessions(sessions);
+      localStorage.setItem("tripcrew_travel_active", newSession.id);
       renderSessionList();
       renderEmptyState();
       hideInterrupt();
+      hidePlanPanel();
       els.statusPill.textContent = "就绪";
     });
 
-    els.travelModeBtn.addEventListener("click", () => {
-      if (state.busy || state.mode === "travel") return;
-      state.mode = "travel";
-      applyMode();
+    document.querySelectorAll(".plan-choice").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (state.busy) return;
+        state.selectedPlan = button.dataset.plan;
+        els.planPanel.classList.add("hidden");
+        addMessage("user", `我选择${state.selectedPlan}。`);
+        await sendToAgent({
+          message: `我选择${state.selectedPlan}，请把这个方案作为最终方案。整理完成后询问我是否要发邮件给同伴，但不要直接发送邮件。`,
+          showPlanChoices: false,
+        });
+        if (state.selectedPlan) {
+          showCompanionPanel();
+        }
+      });
     });
 
-    els.mailModeBtn.addEventListener("click", () => {
-      if (state.busy || state.mode === "mail") return;
-      state.mode = "mail";
-      applyMode();
+    els.inviteFriendBtn.addEventListener("click", async () => {
+      if (state.busy) return;
+      const name = els.friendNameInput.value.trim();
+      const email = els.friendEmailInput.value.trim();
+      if (!state.selectedPlan) {
+        addMessage("assistant", "请先选择一个方案。", "error-msg");
+        return;
+      }
+      if (!name || !email) {
+        addMessage("assistant", "请填写朋友名字和邮箱。", "error-msg");
+        return;
+      }
+      addMessage("user", `把${state.selectedPlan}发给${name}（${email}）。`);
+      els.planPanel.classList.add("hidden");
+      await sendToAgent({
+        message: `请基于我选择的${state.selectedPlan}，给朋友${name}（${email}）生成并发送出行邀请邮件。邮件发送前必须让我确认。`,
+      });
     });
 
     els.approveBtn.addEventListener("click", async () => {
+      const pending = state.pendingInterrupt || {};
+      let info = pending.interrupt || pending;
+      if (Array.isArray(info)) {
+        info = info[0] || {};
+      }
+      const decision = { type: "approve" };
+      if (info.type === "location_confirm") {
+        decision.kind = "location";
+      }
       hideInterrupt();
-      addMessage("user", "确认发送邮件。");
-      await sendToAgent({ interruptDecision: { type: "approve" } });
+      addMessage("user", info.type === "location_confirm" ? "允许获取位置。" : "确认发送邮件。");
+      await sendToAgent({ interruptDecision: decision });
     });
 
     els.rejectBtn.addEventListener("click", async () => {
+      const pending = state.pendingInterrupt || {};
+      let info = pending.interrupt || pending;
+      if (Array.isArray(info)) {
+        info = info[0] || {};
+      }
       const message = els.rejectReason.value.trim() || "请重新调整邮件内容。";
+      const decision = { type: "reject", message };
+      if (info.type === "location_confirm") {
+        decision.kind = "location";
+      }
       hideInterrupt();
-      addMessage("user", `拒绝发送：${message}`);
-      await sendToAgent({ interruptDecision: { type: "reject", message } });
+      addMessage("user", info.type === "location_confirm" ? "拒绝获取位置。" : `拒绝发送：${message}`);
+      await sendToAgent({ interruptDecision: decision });
     });
   </script>
 </body>
