@@ -3,54 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Email Friend</title>
-  <meta name="description" content="Email Friend Agent Console">
+  <title>TripCrew 出行企划助手</title>
+  <meta name="description" content="TripCrew Travel Multi-Agent Console">
   <style>
     :root {
       color-scheme: light;
-      --bg: #f5f7f4;
+      --bg: #f6f8f5;
       --panel: #ffffff;
-      --panel-soft: #f9faf7;
-      --line: #dfe6df;
-      --line-strong: #c8d3cb;
-      --ink: #1c2526;
-      --muted: #64706b;
-      --muted-soft: #8d9894;
-      --teal: #0f766e;
-      --teal-strong: #0b5d56;
-      --teal-soft: #e7f4f1;
-      --amber: #c77d17;
-      --amber-soft: #fff2d8;
+      --panel-soft: #f9fbf8;
+      --line: #dce5dd;
+      --line-strong: #c3d3c5;
+      --ink: #17211d;
+      --muted: #64746b;
+      --green: #147d64;
+      --green-strong: #0d654f;
+      --green-soft: #e6f4ef;
+      --blue: #2e5e9e;
+      --blue-soft: #eaf2ff;
+      --amber: #a96712;
+      --amber-soft: #fff4dc;
       --red: #b42318;
-      --red-soft: #fff0ed;
-      --blue: #2f5f98;
-      --blue-soft: #eaf1fb;
-      --shadow: 0 18px 42px rgba(31, 45, 43, 0.08);
+      --red-soft: #fff1ee;
+      --shadow: 0 18px 46px rgba(28, 44, 35, 0.1);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    html,
-    body {
+    html, body {
       height: 100%;
     }
 
     body {
       margin: 0;
-      height: 100vh;
+      min-height: 100vh;
       overflow: hidden;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(245, 247, 244, 0.96)),
-        repeating-linear-gradient(90deg, rgba(15, 118, 110, 0.045) 0 1px, transparent 1px 88px);
       color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 248, 245, 0.96)),
+        repeating-linear-gradient(90deg, rgba(20, 125, 100, 0.045) 0 1px, transparent 1px 92px);
     }
 
-    button,
-    textarea,
-    input {
+    button, textarea, input {
       font: inherit;
     }
 
@@ -58,54 +52,50 @@
       cursor: pointer;
     }
 
-    button:disabled,
-    textarea:disabled {
+    button:disabled, textarea:disabled {
       cursor: not-allowed;
       opacity: 0.58;
     }
 
-    .app-shell {
+    .app {
       height: 100vh;
-      min-height: 0;
       display: grid;
-      grid-template-columns: 300px minmax(0, 1fr);
+      grid-template-columns: 320px minmax(0, 1fr);
       overflow: hidden;
     }
 
     .sidebar {
       display: flex;
       flex-direction: column;
-      height: 100vh;
       min-height: 0;
       border-right: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.86);
+      background: rgba(255, 255, 255, 0.88);
       backdrop-filter: blur(18px);
-      overflow: hidden;
     }
 
     .brand {
       display: flex;
-      align-items: center;
       gap: 12px;
+      align-items: center;
       padding: 22px 18px 18px;
       border-bottom: 1px solid var(--line);
     }
 
     .brand-mark {
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       display: grid;
       place-items: center;
       border-radius: 8px;
-      background: var(--teal);
       color: #fff;
-      box-shadow: 0 10px 24px rgba(15, 118, 110, 0.22);
+      background: var(--green);
+      box-shadow: 0 12px 24px rgba(20, 125, 100, 0.22);
     }
 
     .brand h1 {
       margin: 0;
-      font-size: 18px;
-      line-height: 1.1;
+      font-size: 19px;
+      line-height: 1.15;
       letter-spacing: 0;
     }
 
@@ -115,17 +105,46 @@
       font-size: 12px;
     }
 
-    .sidebar-actions {
+    .sidebar-body {
       padding: 14px;
       display: grid;
-      gap: 10px;
-      border-bottom: 1px solid var(--line);
+      gap: 14px;
+      overflow: auto;
     }
 
-    .primary-btn,
-    .secondary-btn,
-    .danger-btn,
-    .ghost-btn {
+    .thread-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 8px 24px rgba(28, 44, 35, 0.05);
+      padding: 12px 14px;
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .mode-btn {
+      min-height: 34px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .mode-btn.active {
+      color: #fff;
+      background: var(--green);
+    }
+
+    .primary-btn, .ghost-btn, .danger-btn {
       min-height: 38px;
       border-radius: 8px;
       border: 1px solid transparent;
@@ -135,27 +154,22 @@
       gap: 8px;
       padding: 8px 12px;
       font-weight: 650;
-      transition: transform 140ms ease, background 140ms ease, border 140ms ease;
+      transition: background 140ms ease, border 140ms ease, transform 140ms ease;
     }
 
     .primary-btn {
       color: #fff;
-      background: var(--teal);
+      background: var(--green);
     }
 
     .primary-btn:hover {
-      background: var(--teal-strong);
+      background: var(--green-strong);
     }
 
-    .secondary-btn {
-      color: var(--teal-strong);
+    .ghost-btn {
+      color: var(--green-strong);
       border-color: var(--line-strong);
       background: #fff;
-    }
-
-    .secondary-btn:hover {
-      background: var(--teal-soft);
-      border-color: rgba(15, 118, 110, 0.28);
     }
 
     .danger-btn {
@@ -164,1013 +178,865 @@
       background: var(--red-soft);
     }
 
-    .ghost-btn {
-      color: var(--muted);
-      background: transparent;
-      border-color: var(--line);
-    }
-
-    .icon-btn {
-      width: 36px;
-      height: 36px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      color: var(--muted);
-      display: grid;
-      place-items: center;
-    }
-
-    .icon-btn:hover {
-      color: var(--teal);
-      border-color: rgba(15, 118, 110, 0.3);
-      background: var(--teal-soft);
-    }
-
-    .section-title {
-      padding: 14px 16px 8px;
+    .thread-label {
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0;
+    }
+
+    .thread-id {
+      margin-top: 8px;
+      word-break: break-all;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-radius: 8px;
+      padding: 8px;
     }
 
     .session-list {
-      flex: 1;
-      overflow: auto;
-      padding: 0 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .session-list-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 2px;
     }
 
     .session-item {
-      width: 100%;
-      border: 1px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
       border-radius: 8px;
-      background: transparent;
-      padding: 11px 10px;
-      margin-bottom: 6px;
-      text-align: left;
-      color: var(--ink);
+      background: var(--panel);
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease;
     }
 
     .session-item:hover {
+      border-color: var(--line-strong);
       background: var(--panel-soft);
-      border-color: var(--line);
     }
 
     .session-item.active {
-      background: var(--teal-soft);
-      border-color: rgba(15, 118, 110, 0.26);
+      border-color: var(--green);
+      background: var(--green-soft);
     }
 
-    .session-name {
-      display: block;
+    .session-item .session-name {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 600;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .session-item .session-time {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .session-item .session-delete {
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: none;
+      color: var(--muted);
       font-size: 14px;
-      font-weight: 700;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 140ms;
     }
 
-    .session-meta {
-      display: block;
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 12px;
+    .session-item:hover .session-delete {
+      opacity: 1;
     }
 
-    .sidebar-footer {
-      border-top: 1px solid var(--line);
-      padding: 14px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
+    .session-item .session-delete:hover {
+      color: var(--red);
+      background: var(--red-soft);
     }
 
-    .workspace {
+    .main {
       min-width: 0;
+      min-height: 0;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr) auto;
-      height: 100vh;
-      min-height: 0;
-      overflow: hidden;
     }
 
     .topbar {
+      min-height: 76px;
+      padding: 16px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 18px;
-      padding: 18px 24px;
+      gap: 16px;
       border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.78);
-      backdrop-filter: blur(18px);
+      background: rgba(255, 255, 255, 0.74);
+      backdrop-filter: blur(14px);
     }
 
-    .title-block h2 {
+    .topbar h2 {
       margin: 0;
-      font-size: 22px;
-      line-height: 1.15;
-      letter-spacing: 0;
+      font-size: 20px;
     }
 
-    .title-block p {
-      margin: 6px 0 0;
+    .topbar p {
+      margin: 5px 0 0;
       color: var(--muted);
       font-size: 13px;
-    }
-
-    .status-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 8px;
     }
 
     .status-pill {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
-      min-height: 30px;
+      gap: 8px;
+      min-height: 34px;
+      padding: 6px 12px;
       border-radius: 999px;
-      padding: 5px 10px;
-      border: 1px solid var(--line);
-      background: #fff;
-      color: var(--muted);
-      font-size: 12px;
+      color: var(--green-strong);
+      background: var(--green-soft);
+      border: 1px solid rgba(20, 125, 100, 0.2);
+      font-size: 13px;
       font-weight: 700;
+      white-space: nowrap;
     }
 
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--muted-soft);
-    }
-
-    .status-pill.ok {
-      color: var(--teal-strong);
-      border-color: rgba(15, 118, 110, 0.26);
-      background: var(--teal-soft);
-    }
-
-    .status-pill.ok .status-dot {
-      background: var(--teal);
-    }
-
-    .status-pill.warn {
-      color: #7a4d0b;
-      border-color: #ead4a6;
-      background: var(--amber-soft);
-    }
-
-    .status-pill.warn .status-dot {
-      background: var(--amber);
-    }
-
-    .conversation {
+    .messages {
       min-height: 0;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding: 22px 24px 26px;
+      overflow: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
 
-    .empty-state {
-      min-height: 56vh;
+    .empty {
+      max-width: 780px;
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .empty-icon {
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 16px;
       display: grid;
       place-items: center;
-      color: var(--muted);
-      text-align: center;
+      border-radius: 14px;
+      background: var(--green);
+      color: #fff;
+      box-shadow: var(--shadow);
     }
 
-    .empty-state svg {
-      color: var(--teal);
-      margin-bottom: 12px;
-    }
-
-    .empty-state h3 {
+    .empty h3 {
       margin: 0 0 8px;
       color: var(--ink);
-      font-size: 18px;
+      font-size: 24px;
     }
 
-    .empty-state p {
-      max-width: 520px;
+    .empty p {
       margin: 0;
-      line-height: 1.65;
-      font-size: 14px;
+      line-height: 1.7;
     }
 
-    .message-list {
-      display: grid;
-      gap: 14px;
-      max-width: 980px;
-      margin: 0 auto;
+    .msg-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
     }
 
-    .message {
-      display: grid;
-      grid-template-columns: 36px minmax(0, auto);
-      gap: 10px;
-      align-items: start;
-    }
-
-    .message.user {
-      grid-template-columns: minmax(0, auto) 36px;
-      justify-content: end;
+    .msg-row.user {
+      justify-content: flex-end;
     }
 
     .avatar {
-      width: 36px;
-      height: 36px;
+      width: 38px;
+      height: 38px;
+      flex: 0 0 38px;
       border-radius: 8px;
       display: grid;
       place-items: center;
       color: #fff;
-      background: var(--teal);
+      background: var(--green);
+      box-shadow: 0 10px 24px rgba(20, 125, 100, 0.16);
     }
 
-    .message.user .avatar {
-      grid-column: 2;
+    .msg-row.user .avatar {
       background: var(--blue);
+      order: 2;
     }
 
     .bubble {
-      max-width: min(720px, 100%);
+      max-width: min(860px, 78%);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 12px 14px;
-      background: #fff;
-      box-shadow: 0 10px 24px rgba(31, 45, 43, 0.05);
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 8px 22px rgba(28, 44, 35, 0.06);
+      line-height: 1.7;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      line-height: 1.65;
-      font-size: 14px;
     }
 
-    .message.user .bubble {
-      grid-column: 1;
-      grid-row: 1;
-      background: var(--blue-soft);
-      border-color: #cbdaf0;
+    .msg-row.user .bubble {
+      color: #fff;
+      background: var(--blue);
+      border-color: rgba(46, 94, 158, 0.18);
+      white-space: pre-wrap;
     }
 
-    .bubble.streaming::after {
-      content: "";
-      display: inline-block;
-      width: 6px;
-      height: 1.15em;
-      margin-left: 2px;
-      vertical-align: -2px;
-      border-radius: 999px;
-      background: var(--teal);
-      animation: blink 900ms steps(2, start) infinite;
-    }
-
-    @keyframes blink {
-      50% { opacity: 0; }
-    }
-
-    .notice {
-      max-width: 980px;
-      margin: 14px auto 0;
-      border: 1px solid #ead4a6;
-      border-radius: 8px;
+    .status-msg .bubble {
+      color: var(--amber);
       background: var(--amber-soft);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .notice-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 13px 14px;
-      border-bottom: 1px solid #ecd8ac;
-    }
-
-    .notice-header strong {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: #724a0d;
-    }
-
-    .notice-body {
-      display: grid;
-      gap: 12px;
-      padding: 14px;
-    }
-
-    .review-grid {
-      display: grid;
-      grid-template-columns: 120px minmax(0, 1fr);
-      gap: 8px 12px;
-      font-size: 14px;
-    }
-
-    .review-grid dt {
-      color: var(--muted);
+      border-color: #efd49d;
       font-weight: 700;
     }
 
-    .review-grid dd {
-      margin: 0;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
+    .error-msg .bubble {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: #f0c7c1;
     }
 
-    .review-raw {
-      max-height: 170px;
-      overflow: auto;
-      margin: 0;
-      padding: 10px;
+    .interrupt {
+      margin: 0 24px 16px;
+      padding: 14px;
+      border: 1px solid #efd49d;
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.66);
-      border: 1px solid #ead4a6;
-      color: #4f3b18;
-      font-size: 12px;
-      line-height: 1.45;
+      background: var(--amber-soft);
+      box-shadow: var(--shadow);
     }
 
-    .review-actions {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      gap: 10px;
-      align-items: end;
+    .interrupt.hidden {
+      display: none;
     }
 
-    .reject-reason {
-      min-height: 42px;
-      resize: vertical;
-      border: 1px solid #ead4a6;
-      border-radius: 8px;
-      padding: 10px 11px;
+    .interrupt h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .email-preview {
       background: #fff;
-      outline: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .email-field {
+      margin-bottom: 4px;
+    }
+    .email-label {
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .email-body-label {
+      font-weight: 600;
+      color: var(--muted);
+      margin: 8px 0 4px;
+    }
+    .email-body {
+      white-space: pre-wrap;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 13px;
     }
 
-    .reject-reason:focus,
-    .composer textarea:focus,
-    .session-name-input:focus {
-      border-color: rgba(15, 118, 110, 0.46);
-      box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+    .interrupt textarea {
+      width: 100%;
+      min-height: 64px;
+      resize: vertical;
+      border-radius: 8px;
+      border: 1px solid var(--line-strong);
+      padding: 10px;
+      background: #fff;
+    }
+
+    .interrupt-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
     }
 
     .composer {
-      padding: 16px 24px 18px;
+      padding: 16px 24px 20px;
       border-top: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.86);
-      backdrop-filter: blur(18px);
+      backdrop-filter: blur(14px);
     }
 
-    .composer-inner {
-      max-width: 980px;
-      margin: 0 auto;
+    .composer form {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
       align-items: end;
     }
 
-    .composer textarea {
+    textarea {
       width: 100%;
       min-height: 48px;
-      max-height: 160px;
+      max-height: 170px;
       resize: vertical;
+      border-radius: 8px;
       border: 1px solid var(--line-strong);
-      border-radius: 8px;
-      background: #fff;
-      outline: none;
-      padding: 12px 13px;
-      line-height: 1.55;
-    }
-
-    .toast {
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      z-index: 20;
-      max-width: 360px;
-      border-radius: 8px;
       padding: 12px 14px;
-      color: #fff;
-      background: #283432;
-      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
-      transform: translateY(18px);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 160ms ease, transform 160ms ease;
-      line-height: 1.5;
-      font-size: 14px;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .session-name-input {
-      width: 100%;
-      min-height: 38px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
       outline: none;
     }
 
-    .mobile-sidebar-toggle {
-      display: none;
+    textarea:focus {
+      border-color: rgba(20, 125, 100, 0.48);
+      box-shadow: 0 0 0 3px rgba(20, 125, 100, 0.12);
     }
 
-    svg {
-      width: 18px;
-      height: 18px;
-      stroke: currentColor;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      fill: none;
-    }
-
-    @media (max-width: 900px) {
-      .app-shell {
+    @media (max-width: 860px) {
+      .app {
         grid-template-columns: 1fr;
       }
 
       .sidebar {
-        position: fixed;
-        inset: 0 auto 0 0;
-        z-index: 10;
-        width: min(86vw, 320px);
-        transform: translateX(-104%);
-        transition: transform 180ms ease;
-        box-shadow: 28px 0 70px rgba(0, 0, 0, 0.16);
-      }
-
-      body.sidebar-open .sidebar {
-        transform: translateX(0);
-      }
-
-      .mobile-sidebar-toggle {
-        display: inline-grid;
+        display: none;
       }
 
       .topbar {
-        padding: 14px;
+        padding: 14px 16px;
       }
 
-      .conversation,
+      .messages {
+        padding: 16px;
+      }
+
+      .bubble {
+        max-width: 88%;
+      }
+
       .composer {
-        padding-left: 14px;
-        padding-right: 14px;
-      }
-
-      .title-block h2 {
-        font-size: 18px;
-      }
-
-      .status-row {
-        justify-content: flex-start;
-      }
-
-      .review-actions {
-        grid-template-columns: 1fr;
-      }
-
-      .composer-inner {
-        grid-template-columns: 1fr;
-      }
-
-      .toast {
-        left: 14px;
-        right: 14px;
-        bottom: 92px;
-        max-width: none;
+        padding: 12px 16px 16px;
       }
     }
   </style>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar" aria-label="会话侧边栏">
+  <div class="app">
+    <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M4 16c3-7 8-10 16-11-1 8-4 13-11 16l-1-5-4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M9 15l6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
         </div>
         <div>
-          <h1>Email Friend</h1>
-          <p>LangChain Agent Console</p>
+          <h1>TripCrew</h1>
+          <p>智能出行规划</p>
         </div>
       </div>
 
-      <div class="sidebar-actions">
-        <input id="sessionName" class="session-name-input" placeholder="会话名称" value="Email Friend">
-        <button id="newSessionBtn" class="primary-btn" type="button">
-          <svg viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-          新建会话
-        </button>
-      </div>
+      <div class="sidebar-body">
+        <div class="mode-switch" aria-label="选择助手模式">
+          <button id="travelModeBtn" class="mode-btn active" type="button">出行</button>
+          <button id="mailModeBtn" class="mode-btn" type="button">邮件</button>
+        </div>
 
-      <div class="section-title">Sessions</div>
-      <div id="sessionList" class="session-list"></div>
+        <button id="newThreadBtn" class="primary-btn" type="button">新建出行会话</button>
 
-      <div class="sidebar-footer">
-        <span id="threadFootnote">未选择会话</span>
+        <div id="sessionListContainer" class="session-list">
+          <div class="session-list-label">会话列表</div>
+        </div>
       </div>
     </aside>
 
-    <main class="workspace">
+    <main class="main">
       <header class="topbar">
-        <button id="sidebarToggle" class="icon-btn mobile-sidebar-toggle" type="button" title="打开会话列表" aria-label="打开会话列表">
-          <svg viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path></svg>
-        </button>
-        <div class="title-block">
-          <h2 id="activeTitle">Email Friend</h2>
-          <p id="activeSubtitle">邮箱授权、读写邮件、发送前确认</p>
+        <div>
+          <h2>出行企划助手</h2>
+          <p>输入你的出行想法，我会整理成可执行的城市行程。</p>
         </div>
-        <div class="status-row" aria-live="polite">
-          <span id="connectionStatus" class="status-pill warn"><span class="status-dot"></span>未连接</span>
-          <span id="authStatus" class="status-pill"><span class="status-dot"></span>待授权</span>
-          <span id="reviewStatus" class="status-pill"><span class="status-dot"></span>无待确认</span>
-        </div>
+        <div id="statusPill" class="status-pill">就绪</div>
       </header>
 
-      <section id="conversation" class="conversation" aria-live="polite"></section>
+      <section id="messages" class="messages">
+        <div id="emptyState" class="empty">
+          <div class="empty-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path d="M4 16c3-7 8-10 16-11-1 8-4 13-11 16l-1-5-4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M9 15l6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <h3>开始规划你的出行</h3>
+          <p>告诉我目的地、出发地、时间或偏好，我会帮你整理行程。</p>
+        </div>
+      </section>
+
+      <section id="interruptPanel" class="interrupt hidden">
+        <h3>📧 邮件发送需要确认</h3>
+        <div id="emailPreview" class="email-preview" style="display:none;">
+          <div class="email-field"><span class="email-label">收件人：</span><span id="emailTo"></span></div>
+          <div class="email-field"><span class="email-label">主题：</span><span id="emailSubject"></span></div>
+          <div class="email-body-label">邮件内容：</div>
+          <div id="emailBody" class="email-body"></div>
+        </div>
+        <p id="interruptText"></p>
+        <textarea id="rejectReason" placeholder="如果拒绝，可以写下需要调整的原因。"></textarea>
+        <div class="interrupt-actions">
+          <button id="approveBtn" class="primary-btn" type="button">✅ 确认发送</button>
+          <button id="rejectBtn" class="danger-btn" type="button">❌ 拒绝并修改</button>
+        </div>
+      </section>
 
       <footer class="composer">
-        <form id="composerForm" class="composer-inner">
-          <textarea id="messageInput" rows="2" placeholder="输入给 Email Friend 的指令"></textarea>
-          <button id="sendBtn" class="primary-btn" type="submit">
-            <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
-            发送
-          </button>
+        <form id="chatForm">
+          <textarea id="messageInput" placeholder="输入你的出行需求" autocomplete="off"></textarea>
+          <button id="sendBtn" class="primary-btn" type="submit">发送</button>
         </form>
       </footer>
     </main>
   </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
   <script>
-    const state = {
-      sessions: [],
-      currentThreadId: localStorage.getItem("email_friend_thread_id") || "",
-      messages: [],
-      isStreaming: false,
-      pendingInterrupt: null,
-      backendOk: false,
-      authenticated: false,
-    };
-
     const els = {
-      sessionList: document.getElementById("sessionList"),
-      sessionName: document.getElementById("sessionName"),
-      newSessionBtn: document.getElementById("newSessionBtn"),
-      threadFootnote: document.getElementById("threadFootnote"),
-      conversation: document.getElementById("conversation"),
-      composerForm: document.getElementById("composerForm"),
+      messages: document.getElementById("messages"),
+      emptyState: document.getElementById("emptyState"),
       messageInput: document.getElementById("messageInput"),
+      chatForm: document.getElementById("chatForm"),
       sendBtn: document.getElementById("sendBtn"),
-      toast: document.getElementById("toast"),
-      connectionStatus: document.getElementById("connectionStatus"),
-      authStatus: document.getElementById("authStatus"),
-      reviewStatus: document.getElementById("reviewStatus"),
-      activeTitle: document.getElementById("activeTitle"),
-      activeSubtitle: document.getElementById("activeSubtitle"),
-      sidebarToggle: document.getElementById("sidebarToggle"),
+      newThreadBtn: document.getElementById("newThreadBtn"),
+      travelModeBtn: document.getElementById("travelModeBtn"),
+      mailModeBtn: document.getElementById("mailModeBtn"),
+      statusPill: document.getElementById("statusPill"),
+      sessionListContainer: document.getElementById("sessionListContainer"),
+      interruptPanel: document.getElementById("interruptPanel"),
+      interruptText: document.getElementById("interruptText"),
+      rejectReason: document.getElementById("rejectReason"),
+      approveBtn: document.getElementById("approveBtn"),
+      rejectBtn: document.getElementById("rejectBtn"),
     };
 
-    const icons = {
-      user: '<svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="7" r="4"></circle></svg>',
-      bot: '<svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10" rx="2"></rect><path d="M12 8V4"></path><path d="M8 13h.01"></path><path d="M16 13h.01"></path><path d="M9 18v2"></path><path d="M15 18v2"></path></svg>',
-      shield: '<svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3Z"></path></svg>',
-    };
-
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    // ---- 会话管理 ----
+    // 每个模式维护一个会话列表：[{id, name, createdAt}, ...]
+    function loadSessions(mode) {
+      try {
+        return JSON.parse(localStorage.getItem(`tripcrew_${mode}_sessions`) || "[]");
+      } catch { return []; }
     }
 
-    function formatDate(value) {
-      if (!value) return "";
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return value;
-      return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    function saveSessions(mode, sessions) {
+      localStorage.setItem(`tripcrew_${mode}_sessions`, JSON.stringify(sessions));
     }
 
-    function showToast(message) {
-      els.toast.textContent = message;
-      els.toast.classList.add("show");
-      window.clearTimeout(showToast.timer);
-      showToast.timer = window.setTimeout(() => els.toast.classList.remove("show"), 2600);
-    }
-
-    function setBusy(isBusy) {
-      state.isStreaming = isBusy;
-      els.sendBtn.disabled = isBusy || !state.currentThreadId;
-      els.messageInput.disabled = isBusy || !state.currentThreadId || Boolean(state.pendingInterrupt);
-    }
-
-    function setPill(el, text, mode) {
-      el.className = `status-pill ${mode || ""}`.trim();
-      el.innerHTML = `<span class="status-dot"></span>${escapeHtml(text)}`;
-    }
-
-    function updateStatus() {
-      setPill(els.connectionStatus, state.backendOk ? "后端已连接" : "未连接", state.backendOk ? "ok" : "warn");
-      setPill(els.authStatus, state.authenticated ? "已授权" : "待授权", state.authenticated ? "ok" : "");
-      setPill(els.reviewStatus, state.pendingInterrupt ? "待确认" : "无待确认", state.pendingInterrupt ? "warn" : "");
-      els.threadFootnote.textContent = state.currentThreadId ? `thread_id: ${state.currentThreadId}` : "未选择会话";
-      const active = state.sessions.find((item) => item.thread_id === state.currentThreadId);
-      els.activeTitle.textContent = active?.name || "Email Friend";
-      els.activeSubtitle.textContent = state.currentThreadId ? "邮箱授权、读写邮件、发送前确认" : "请先创建或选择会话";
-    }
-
-    function scrollConversationToBottom(behavior = "auto") {
-      requestAnimationFrame(() => {
-        els.conversation.scrollTo({
-          top: els.conversation.scrollHeight,
-          behavior,
-        });
-        requestAnimationFrame(() => {
-          els.conversation.scrollTop = els.conversation.scrollHeight;
-        });
-      });
-    }
-
-    function friendlyHttpError(response, text) {
-      if (response.status === 404 || response.status === 501) {
-        return `接口暂不可用：HTTP ${response.status}`;
+    function ensureCurrentSession(mode) {
+      let sessions = loadSessions(mode);
+      let activeId = localStorage.getItem(`tripcrew_${mode}_active`);
+      // 如果没有任何会话或 activeId 不在列表里，创建一个
+      if (!sessions.length) {
+        const newSession = {
+          id: crypto.randomUUID(),
+          name: `会话 1`,
+          createdAt: Date.now(),
+        };
+        sessions.unshift(newSession);
+        saveSessions(mode, sessions);
+        activeId = newSession.id;
+        localStorage.setItem(`tripcrew_${mode}_active`, activeId);
+      } else if (!sessions.find(s => s.id === activeId)) {
+        activeId = sessions[0].id;
+        localStorage.setItem(`tripcrew_${mode}_active`, activeId);
       }
-      const stripped = String(text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-      return stripped ? stripped.slice(0, 160) : `HTTP ${response.status}`;
+      return activeId;
     }
 
-    function normalizeMessage(message) {
-      let content = message?.content ?? "";
-      if (Array.isArray(content)) {
-        content = content.map((part) => part?.text || part?.content || "").join("");
-      } else if (typeof content !== "string") {
-        content = JSON.stringify(content, null, 2);
+    const state = {
+      mode: localStorage.getItem("tripcrew_mode") || "travel",
+      busy: false,
+      pendingInterrupt: null,
+    };
+
+    // 初始化两个模式的会话
+    ensureCurrentSession("travel");
+    ensureCurrentSession("mail");
+
+    function currentThreadId() {
+      return localStorage.getItem(`tripcrew_${state.mode}_active`);
+    }
+
+    function modeConfig() {
+      if (state.mode === "mail") {
+        return {
+          title: "邮件助手",
+          subtitle: "输入你的邮件需求，我会帮你处理邮箱任务。",
+          placeholder: "输入你的邮件需求",
+          emptyTitle: "开始处理邮件",
+          emptyText: "告诉我需要查找、阅读、起草或发送的邮件任务。",
+          newThreadText: "新建邮件会话",
+          busyText: "处理中",
+        };
       }
       return {
-        id: message.id || crypto.randomUUID(),
-        role: message.role || "assistant",
-        content,
-        streaming: Boolean(message.streaming),
+        title: "出行企划助手",
+        subtitle: "输入你的出行想法，我会整理成可执行的城市行程。",
+        placeholder: "输入你的出行需求",
+        emptyTitle: "开始规划你的出行",
+        emptyText: "告诉我目的地、出发地、时间或偏好，我会帮你整理行程。",
+        newThreadText: "新建出行会话",
+        busyText: "调研中",
       };
     }
 
-    function renderSessions() {
-      if (!state.sessions.length) {
-        els.sessionList.innerHTML = '<div class="sidebar-footer">暂无会话</div>';
-        return;
-      }
-      els.sessionList.innerHTML = state.sessions.map((session) => {
-        const active = session.thread_id === state.currentThreadId ? " active" : "";
-        const date = formatDate(session.update_at || session.create_at);
-        return `
-          <button class="session-item${active}" type="button" data-thread="${escapeHtml(session.thread_id)}">
-            <span class="session-name">${escapeHtml(session.name || "Email Friend")}</span>
-            <span class="session-meta">${escapeHtml(date || session.biz_type || "email_agent")}</span>
-          </button>
-        `;
-      }).join("");
+    function renderEmptyState() {
+      const config = modeConfig();
+      els.messages.innerHTML = `<div id="emptyState" class="empty"><div class="empty-icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 16c3-7 8-10 16-11-1 8-4 13-11 16l-1-5-4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 15l6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><h3>${config.emptyTitle}</h3><p>${config.emptyText}</p></div>`;
+      els.emptyState = document.getElementById("emptyState");
     }
 
-    function renderConversation() {
-      const interruptHtml = state.pendingInterrupt ? renderInterrupt(state.pendingInterrupt) : "";
-      if (!state.messages.length && !interruptHtml) {
-        els.conversation.innerHTML = `
-          <div class="empty-state">
-            <div>
-              ${icons.shield}
-              <h3>Email Friend 已就绪</h3>
-              <p>首次操作前先完成邮箱授权；当 agent 准备发送邮件时，这里会显示人工确认面板。</p>
-            </div>
-          </div>
-        `;
-        updateStatus();
-        return;
-      }
-
-      const messagesHtml = state.messages.map((message) => {
-        const avatar = message.role === "user" ? icons.user : icons.bot;
-        const bubbleClass = message.streaming ? "bubble streaming" : "bubble";
-        return `
-          <article class="message ${escapeHtml(message.role)}">
-            <div class="avatar" aria-hidden="true">${avatar}</div>
-            <div class="${bubbleClass}">${escapeHtml(message.content)}</div>
-          </article>
-        `;
-      }).join("");
-
-      els.conversation.innerHTML = `
-        <div class="message-list">${messagesHtml}</div>
-        ${interruptHtml}
-        <span id="scrollAnchor"></span>
-      `;
-      updateStatus();
-      scrollConversationToBottom(state.isStreaming ? "auto" : "smooth");
+    function historyEndpoint() {
+      return state.mode === "mail" ? "/api/v1/chat/messages" : "/api/v1/travel/messages";
     }
 
-    function collectActionRequests(value, found = []) {
-      if (!value || typeof value !== "object") return found;
-      if (Array.isArray(value)) {
-        value.forEach((item) => collectActionRequests(item, found));
-        return found;
-      }
-      if (Array.isArray(value.action_requests)) {
-        value.action_requests.forEach((item) => found.push(item));
-      }
-      Object.values(value).forEach((item) => collectActionRequests(item, found));
-      return found;
-    }
-
-    function renderInterrupt(interrupt) {
-      const details = interrupt.details ?? interrupt;
-      const actions = collectActionRequests(details);
-      const action = actions[0] || {};
-      const args = action.arguments || action.args || {};
-      const rows = [
-        ["工具", action.name || action.tool || "send_email"],
-        ["收件人", args.to],
-        ["主题", args.subject],
-        ["正文", args.body],
-      ].filter(([, value]) => value);
-
-      const reviewRows = rows.length
-        ? rows.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("")
-        : `<dt>详情</dt><dd>${escapeHtml(interrupt.reason || "需要人工确认")}</dd>`;
-
-      return `
-        <section class="notice">
-          <div class="notice-header">
-            <strong>
-              <svg viewBox="0 0 24 24"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path></svg>
-              邮件发送确认
-            </strong>
-            <button class="ghost-btn" type="button" data-action="hide-raw">JSON</button>
-          </div>
-          <div class="notice-body">
-            <dl class="review-grid">${reviewRows}</dl>
-            <pre id="interruptRaw" class="review-raw" hidden>${escapeHtml(JSON.stringify(details, null, 2))}</pre>
-            <div class="review-actions">
-              <textarea id="rejectReason" class="reject-reason" placeholder="拒绝原因或修改意见"></textarea>
-              <button class="danger-btn" type="button" data-action="reject">拒绝</button>
-              <button class="primary-btn" type="button" data-action="approve">同意发送</button>
-            </div>
-          </div>
-        </section>
-      `;
-    }
-
-    async function api(path, options = {}) {
-      const response = await fetch(path, {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          ...(options.headers || {}),
-        },
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        state.backendOk = false;
-        throw new Error(friendlyHttpError(response, text));
-      }
-      state.backendOk = true;
-      return response;
-    }
-
-    async function loadSessions() {
+    async function loadActiveSessionMessages() {
+      renderEmptyState();
+      hideInterrupt();
       try {
-        const response = await api("/api/v1/sessions?user_id=riddler&biz_type=email_agent", { method: "GET", headers: {} });
-        state.sessions = await response.json();
-        if (!state.currentThreadId && state.sessions[0]) {
-          state.currentThreadId = state.sessions[0].thread_id;
-          localStorage.setItem("email_friend_thread_id", state.currentThreadId);
+        const response = await fetch(`${historyEndpoint()}?thread_id=${encodeURIComponent(currentThreadId())}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const messages = data.messages || [];
+        if (!messages.length) return;
+        els.messages.innerHTML = "";
+        els.emptyState = null;
+        for (const msg of messages) {
+          if (msg.role === "user" || msg.role === "assistant") {
+            addMessage(msg.role, msg.content || "");
+          }
+        }
+        if (data.has_interrupt && data.interrupt) {
+          showInterrupt(data.interrupt);
         }
       } catch (error) {
-        state.backendOk = false;
-        if (state.currentThreadId) {
-          state.sessions = [{ thread_id: state.currentThreadId, name: "本地会话", biz_type: "email_agent" }];
-        }
-        showToast(`会话加载失败：${error.message}`);
+        addMessage("assistant", "读取历史会话失败。", "error-msg");
       }
-      renderSessions();
-      updateStatus();
     }
 
-    async function createSession() {
-      const name = els.sessionName.value.trim() || `Email Friend ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
-      try {
-        const response = await api("/api/v1/sessions", {
-          method: "POST",
-          body: JSON.stringify({ user_id: "riddler", biz_type: "email_agent", name }),
+    function renderSessionList() {
+      const sessions = loadSessions(state.mode);
+      const activeId = currentThreadId();
+      // 清空列表（保留 label）
+      els.sessionListContainer.innerHTML = '<div class="session-list-label">会话列表</div>';
+      if (!sessions.length) return;
+      sessions.forEach((s) => {
+        const item = document.createElement("div");
+        item.className = `session-item${s.id === activeId ? " active" : ""}`;
+        item.innerHTML = `
+          <span class="session-name">${s.name}</span>
+          <span class="session-time">${new Date(s.createdAt).toLocaleDateString()}</span>
+          <button class="session-delete" title="删除会话">×</button>
+        `;
+        // 点击切换会话
+        item.addEventListener("click", (e) => {
+          if (e.target.classList.contains("session-delete")) return;
+          if (state.busy || s.id === activeId) return;
+          localStorage.setItem(`tripcrew_${state.mode}_active`, s.id);
+          renderSessionList();
+          els.statusPill.textContent = "就绪";
+          loadActiveSessionMessages();
         });
-        const session = await response.json();
-        state.sessions = [session, ...state.sessions.filter((item) => item.thread_id !== session.thread_id)];
-        await selectSession(session.thread_id, false);
-      } catch (error) {
-        const threadId = crypto.randomUUID();
-        state.sessions = [{ thread_id: threadId, name, biz_type: "email_agent" }, ...state.sessions];
-        await selectSession(threadId, false);
-        showToast(`后端会话接口不可用，已创建本地 thread：${error.message}`);
+        // 删除按钮
+        item.querySelector(".session-delete").addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (state.busy) return;
+          state.busy = true;
+          const deletingActive = s.id === activeId;
+          try {
+            await fetch(`${historyEndpoint()}?thread_id=${encodeURIComponent(s.id)}`, { method: "DELETE" });
+            let updatedSessions = loadSessions(state.mode).filter(x => x.id !== s.id);
+            saveSessions(state.mode, updatedSessions);
+            if (deletingActive) {
+              const nextId = ensureCurrentSession(state.mode);
+              localStorage.setItem(`tripcrew_${state.mode}_active`, nextId);
+            }
+            renderSessionList();
+            await loadActiveSessionMessages();
+          } finally {
+            state.busy = false;
+          }
+        });
+        els.sessionListContainer.appendChild(item);
+      });
+    }
+
+    function applyMode() {
+      const config = modeConfig();
+      localStorage.setItem("tripcrew_mode", state.mode);
+      els.travelModeBtn.classList.toggle("active", state.mode === "travel");
+      els.mailModeBtn.classList.toggle("active", state.mode === "mail");
+      document.querySelector(".topbar h2").textContent = config.title;
+      document.querySelector(".topbar p").textContent = config.subtitle;
+      els.messageInput.placeholder = config.placeholder;
+      els.newThreadBtn.textContent = config.newThreadText;
+      els.statusPill.textContent = "就绪";
+      renderSessionList();
+      loadActiveSessionMessages();
+    }
+
+    applyMode();
+
+    function setBusy(value) {
+      state.busy = value;
+      els.sendBtn.disabled = value;
+      els.messageInput.disabled = value;
+      els.statusPill.textContent = value ? modeConfig().busyText : "就绪";
+    }
+
+    function clearEmpty() {
+      if (els.emptyState) {
+        els.emptyState.remove();
+        els.emptyState = null;
       }
-      renderSessions();
     }
 
-    async function selectSession(threadId, shouldLoad = true) {
-      state.currentThreadId = threadId;
-      localStorage.setItem("email_friend_thread_id", threadId);
-      state.messages = [];
-      state.pendingInterrupt = null;
-      document.body.classList.remove("sidebar-open");
-      renderSessions();
-      updateStatus();
-      if (shouldLoad) await loadMessages();
-      renderConversation();
-      setBusy(false);
+    function scrollToBottom() {
+      els.messages.scrollTop = els.messages.scrollHeight;
     }
 
-    async function loadMessages() {
-      if (!state.currentThreadId) return;
-      try {
-        const response = await api(`/api/v1/sessions/${encodeURIComponent(state.currentThreadId)}/messages`, { method: "GET", headers: {} });
-        const payload = await response.json();
-        state.messages = (payload.messages || []).map(normalizeMessage);
-        state.pendingInterrupt = payload.has_interrupt ? payload.interrupt : null;
-        state.authenticated = state.messages.some((msg) => /authenticated|授权|登录|成功/i.test(msg.content));
-      } catch (error) {
-        showToast(`历史消息加载失败：${error.message}`);
+    function addMessage(role, content, kind = "") {
+      clearEmpty();
+      const row = document.createElement("div");
+      row.className = `msg-row ${role} ${kind}`.trim();
+
+      const avatar = document.createElement("div");
+      avatar.className = "avatar";
+      avatar.innerHTML = role === "user"
+        ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2"/></svg>'
+        : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 16c3-7 8-10 16-11-1 8-4 13-11 16l-1-5-4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 15l6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = content;
+
+      row.append(avatar, bubble);
+      els.messages.appendChild(row);
+      scrollToBottom();
+      return bubble;
+    }
+
+    function appendToBubble(bubble, content) {
+      bubble.textContent += content;
+      scrollToBottom();
+    }
+
+    async function typeIntoBubble(bubble, content) {
+      for (const char of content) {
+        appendToBubble(bubble, char);
+        await new Promise((resolve) => setTimeout(resolve, 8));
       }
-      renderConversation();
     }
 
-    function addMessage(role, content, extra = {}) {
-      const message = normalizeMessage({ role, content, ...extra });
-      state.messages.push(message);
-      renderConversation();
-      return message.id;
-    }
+    function showInterrupt(payload) {
+      state.pendingInterrupt = payload;
+      console.log("interrupt payload:", JSON.stringify(payload, null, 2));
 
-    function updateMessage(id, patch) {
-      state.messages = state.messages.map((message) => message.id === id ? { ...message, ...patch } : message);
-      renderConversation();
-    }
+      const emailPreview = document.getElementById("emailPreview");
+      const emailTo = document.getElementById("emailTo");
+      const emailSubject = document.getElementById("emailSubject");
+      const emailBody = document.getElementById("emailBody");
 
-    async function sendToAgent({ message = "", decision = null }) {
-      if (!state.currentThreadId) {
-        await createSession();
-      }
-      if (state.isStreaming) return;
+      // 新结构：payload 直接就是 {type:"email_confirm", to, to_name, subject, body}
+      // 兼容旧结构：payload.interrupt 可能包裹一层
+      const info = payload.type === "email_confirm" ? payload : (payload.interrupt || payload);
 
-      state.pendingInterrupt = null;
-      if (decision) {
-        const label = decision.type === "approve" ? "同意发送这封邮件。" : `拒绝发送：${decision.message || "需要调整"}`;
-        addMessage("user", label);
+      if (info.to && info.subject && info.body) {
+        emailTo.textContent = `${info.to_name || ""} (${info.to})`;
+        emailSubject.textContent = info.subject;
+        emailBody.textContent = info.body;
+        emailPreview.style.display = "block";
+        els.interruptText.textContent = "请确认以上邮件内容，确认后将发送。";
       } else {
-        addMessage("user", message);
+        emailPreview.style.display = "none";
+        els.interruptText.textContent = "已生成邮件发送请求，请确认是否继续。";
       }
 
-      const assistantId = addMessage("assistant", "", { streaming: true });
-      setBusy(true);
+      els.interruptPanel.classList.remove("hidden");
+      els.interruptPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
 
+    function hideInterrupt() {
+      state.pendingInterrupt = null;
+      els.rejectReason.value = "";
+      els.interruptPanel.classList.add("hidden");
+      document.getElementById("emailPreview").style.display = "none";
+    }
+
+    function parseSseBlock(block) {
+      let event = "message";
+      const dataLines = [];
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+      }
+      return { event, data: dataLines.join("\n") };
+    }
+
+    async function sendToAgent({ message = "", interruptDecision = null } = {}) {
+      setBusy(true);
       try {
-        const response = await fetch("/api/v1/chat/send", {
+        const endpoint = state.mode === "mail" ? "/api/v1/chat/send" : "/api/v1/travel/send";
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            thread_id: state.currentThreadId,
             message,
-            interrupt_decision: decision,
+            thread_id: currentThreadId(),
+            interrupt_decision: interruptDecision,
           }),
         });
 
-        state.backendOk = true;
-        if (!response.ok || !response.body) {
-          const text = await response.text();
-          state.backendOk = false;
-          throw new Error(friendlyHttpError(response, text));
+        if (!response.ok) {
+          throw new Error(`请求失败：${response.status}`);
         }
 
-        await readSse(response.body, (event, data) => {
-          const parsed = safeJson(data);
-          if (event === "message" || parsed?.type === "message") {
-            const content = parsed?.content ?? data;
-            const current = state.messages.find((item) => item.id === assistantId);
-            updateMessage(assistantId, { content: (current?.content || "") + content, streaming: true });
-            if (/authenticated|授权|登录|成功/i.test(content)) state.authenticated = true;
-          } else if (event === "interrupt" || parsed?.type === "interrupt") {
-            state.pendingInterrupt = parsed?.interrupt || parsed || { reason: "需要人工确认" };
-            updateMessage(assistantId, { content: state.messages.find((item) => item.id === assistantId)?.content || "等待人工确认。", streaming: false });
-          } else if (event === "error" || parsed?.type === "error") {
-            throw new Error(parsed?.error || data || "SSE error");
-          } else if (event === "done" || parsed?.type === "done") {
-            const current = state.messages.find((item) => item.id === assistantId);
-            updateMessage(assistantId, { content: current?.content || "处理完成。", streaming: false });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let streamingBubble = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const parts = buffer.split(/\r?\n\r?\n/);
+          buffer = parts.pop() || "";
+
+          for (const part of parts) {
+            if (!part.trim()) continue;
+            const { event, data } = parseSseBlock(part);
+            let payload = {};
+            try {
+              payload = data ? JSON.parse(data) : {};
+            } catch {
+              payload = { content: data };
+            }
+
+            if (event === "message" || event === "message_delta") {
+              if (!streamingBubble) {
+                streamingBubble = addMessage("assistant", "");
+              }
+              appendToBubble(streamingBubble, payload.content || "");
+            } else if (event === "message_end") {
+              streamingBubble = null;
+            } else if (event === "status") {
+              streamingBubble = null;
+              addMessage("assistant", payload.content || "", "status-msg");
+              els.statusPill.textContent = payload.content || modeConfig().busyText;
+            } else if (event === "interrupt") {
+              streamingBubble = null;
+              addMessage("assistant", "邮件发送前需要你确认。", "status-msg");
+              showInterrupt(payload.interrupt || payload);
+            } else if (event === "error") {
+              streamingBubble = null;
+              addMessage("assistant", payload.content || payload.error || "请求出错", "error-msg");
+            } else if (event === "done") {
+              streamingBubble = null;
+            }
           }
-        });
+        }
       } catch (error) {
-        state.backendOk = false;
-        updateMessage(assistantId, { content: `请求失败：${error.message}`, streaming: false });
-        showToast(error.message);
+        addMessage("assistant", error.message || String(error), "error-msg");
       } finally {
         setBusy(false);
-        updateStatus();
       }
     }
 
-    async function readSse(body, onEvent) {
-      const reader = body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split(/\r?\n\r?\n/);
-        buffer = chunks.pop() || "";
-        chunks.forEach((chunk) => {
-          let event = "message";
-          const data = [];
-          chunk.split(/\r?\n/).forEach((line) => {
-            if (line.startsWith("event:")) event = line.slice(6).trim();
-            if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
-          });
-          if (data.length) onEvent(event, data.join("\n"));
-        });
-      }
-    }
-
-    function safeJson(value) {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return null;
-      }
-    }
-
-    els.newSessionBtn.addEventListener("click", createSession);
-
-    els.sessionList.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-thread]");
-      if (button) selectSession(button.dataset.thread);
-    });
-
-    els.composerForm.addEventListener("submit", async (event) => {
+    els.chatForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const message = els.messageInput.value.trim();
-      if (!message || state.pendingInterrupt) return;
+      if (!message || state.busy) return;
       els.messageInput.value = "";
+      addMessage("user", message);
+
+      // 用第一条消息更新会话名
+      const sessions = loadSessions(state.mode);
+      const active = sessions.find(s => s.id === currentThreadId());
+      if (active && active.name.startsWith("会话 ")) {
+        active.name = message.slice(0, 20) + (message.length > 20 ? "..." : "");
+        saveSessions(state.mode, sessions);
+        renderSessionList();
+      }
+
       await sendToAgent({ message });
     });
-
-    els.conversation.addEventListener("click", async (event) => {
-      const action = event.target.closest("[data-action]")?.dataset.action;
-      if (!action) return;
-      if (action === "hide-raw") {
-        document.getElementById("interruptRaw")?.toggleAttribute("hidden");
-        return;
-      }
-      if (action === "approve") {
-        await sendToAgent({ decision: { type: "approve" } });
-      }
-      if (action === "reject") {
-        const message = document.getElementById("rejectReason")?.value.trim() || "请重新调整邮件内容。";
-        await sendToAgent({ decision: { type: "reject", message } });
-      }
-    });
-
-    els.sidebarToggle.addEventListener("click", () => document.body.classList.toggle("sidebar-open"));
 
     els.messageInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
-        els.composerForm.requestSubmit();
+        els.chatForm.requestSubmit();
       }
     });
 
-    (async function init() {
-      setBusy(true);
-      await loadSessions();
-      if (!state.currentThreadId) {
-        await createSession();
-      } else {
-        await loadMessages();
-      }
-      renderSessions();
-      renderConversation();
-      setBusy(false);
-    })();
+    els.newThreadBtn.addEventListener("click", () => {
+      if (state.busy) return;
+      const sessions = loadSessions(state.mode);
+      const newSession = {
+        id: crypto.randomUUID(),
+        name: `会话 ${sessions.length + 1}`,
+        createdAt: Date.now(),
+      };
+      sessions.unshift(newSession);
+      saveSessions(state.mode, sessions);
+      localStorage.setItem(`tripcrew_${state.mode}_active`, newSession.id);
+      renderSessionList();
+      renderEmptyState();
+      hideInterrupt();
+      els.statusPill.textContent = "就绪";
+    });
+
+    els.travelModeBtn.addEventListener("click", () => {
+      if (state.busy || state.mode === "travel") return;
+      state.mode = "travel";
+      applyMode();
+    });
+
+    els.mailModeBtn.addEventListener("click", () => {
+      if (state.busy || state.mode === "mail") return;
+      state.mode = "mail";
+      applyMode();
+    });
+
+    els.approveBtn.addEventListener("click", async () => {
+      hideInterrupt();
+      addMessage("user", "确认发送邮件。");
+      await sendToAgent({ interruptDecision: { type: "approve" } });
+    });
+
+    els.rejectBtn.addEventListener("click", async () => {
+      const message = els.rejectReason.value.trim() || "请重新调整邮件内容。";
+      hideInterrupt();
+      addMessage("user", `拒绝发送：${message}`);
+      await sendToAgent({ interruptDecision: { type: "reject", message } });
+    });
   </script>
 </body>
 </html>

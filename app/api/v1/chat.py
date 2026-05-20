@@ -18,3 +18,14 @@ async def send_chat(request: ChatRequest):
             request.interrupt_decision,
         )
     )
+
+
+@router.get("/chat/messages", tags=["邮件 Agent"])
+async def get_chat_messages(thread_id: str):
+    return await email_agent.get_messages(thread_id)
+
+
+@router.delete("/chat/messages", tags=["邮件 Agent"])
+async def clear_chat_messages(thread_id: str):
+    await email_agent.clear_messages(thread_id)
+    return {"status": "ok"}

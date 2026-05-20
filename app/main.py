@@ -10,6 +10,8 @@ from app.api.v1 import chat, travel
 
 from app.api.v1 import travel
 
+from app.agents.travel.pipeline import travel_pipeline
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,10 +22,14 @@ async def lifespan(app: FastAPI):
     else:
         print("EmailAgent skipped: credentials.json/token.json not found.")
 
+    # 新增：初始化 Travel Pipeline
+    await travel_pipeline.init()
+
     yield
 
     if email_agent_started:
         await email_agent.close()
+    await travel_pipeline.close()
 
 app = FastAPI(
     title="TripCrew 出行企划多智能体 API",
