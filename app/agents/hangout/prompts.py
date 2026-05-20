@@ -1,4 +1,4 @@
-# app/agents/travel/prompts.py
+# app/agents/hangout/prompts.py
 """所有 Agent 的 system prompt。"""
 
 SUPERVISOR_PROMPT = """你是 HangoutAgent 出行助手的 Supervisor。

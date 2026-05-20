@@ -1,5 +1,5 @@
-# app/agents/travel/supervisor.py
-"""TravelSupervisor：编排天气/路线/POI/邮件/12306/住宿子 Agent。"""
+# app/agents/hangout/supervisor.py
+"""HangoutSupervisor：编排天气/路线/POI/邮件/12306/住宿子 Agent。"""
 
 import asyncio
 import traceback
@@ -11,14 +11,14 @@ from langchain.chat_models import init_chat_model
 from langgraph.types import Command
 from langgraph_supervisor import create_supervisor
 
-from app.agents.travel.agents import (
+from app.agents.hangout.agents import (
     create_weather_agent, create_route_agent, create_poi_agent,
     create_email_agent, create_train_agent, create_flight_agent, create_hotel_agent,
 )
-from app.agents.travel.mcp_client import get_travel_tools
-from app.agents.travel.prompts import SUPERVISOR_PROMPT
-from app.agents.travel.tools import (
-    TravelState,
+from app.agents.hangout.mcp_client import get_hangout_tools
+from app.agents.hangout.prompts import SUPERVISOR_PROMPT
+from app.agents.hangout.tools import (
+    HangoutState,
     ask_weather_concern,
     mark_trip_type,
     mark_weather_result,
@@ -174,17 +174,17 @@ async def _emit_deltas(text: str):
         await asyncio.sleep(0.005)
 
 
-# ---- TravelSupervisor ----
+# ---- HangoutSupervisor ----
 
-class TravelSupervisor:
+class HangoutSupervisor:
     def __init__(self):
         self.graph = None
 
     async def init(self):
-        logger.info("TravelSupervisor 初始化中...")
+        logger.info("HangoutSupervisor 初始化中...")
         await session_manager.init()
 
-        tools = await get_travel_tools()
+        tools = await get_hangout_tools()
 
         # 注入 store 给 tools.py 使用
         set_store(session_manager.store)
@@ -225,14 +225,14 @@ class TravelSupervisor:
             model=model,
             prompt=_make_prompt_fn(),
             tools=sup_tools,
-            state_schema=TravelState,
+            state_schema=HangoutState,
             parallel_tool_calls=True,
             output_mode="full_history",
         ).compile(
             checkpointer=session_manager.checkpointer,
             store=session_manager.store,
         )
-        logger.info(f"TravelSupervisor 初始化完成 ✓ ({len(agents)} 个子 Agent)")
+        logger.info(f"HangoutSupervisor 初始化完成 ✓ ({len(agents)} 个子 Agent)")
 
     async def close(self):
         await session_manager.close()
@@ -307,4 +307,4 @@ def _format_exception(exc: BaseException) -> str:
     return tb or str(exc)
 
 
-travel_supervisor = TravelSupervisor()
+hangout_supervisor = HangoutSupervisor()

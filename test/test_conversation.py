@@ -84,15 +84,15 @@ def show_state(state: dict):
 
 
 async def main():
-    from app.agents.travel.supervisor import travel_supervisor
+    from app.agents.hangout.supervisor import hangout_supervisor
 
     print("=" * 60)
-    print("  端到端对话测试 —— TravelState + Command 工具链")
+    print("  端到端对话测试 —— HangoutState + Command 工具链")
     print("=" * 60)
 
     print("\n⏳ 初始化 supervisor...")
     try:
-        await travel_supervisor.init()
+        await hangout_supervisor.init()
     except Exception as e:
         print(f"❌ 初始化失败: {e}")
         sys.exit(1)
@@ -114,16 +114,16 @@ async def main():
 
     try:
         # ── Turn 1: 提供目的地 + 日期 ──
-        r1 = await chat(travel_supervisor, thread_id,
+        r1 = await chat(hangout_supervisor, thread_id,
                         "这周六去杭州西湖", turn=1)
-        s1 = await get_state(travel_supervisor, thread_id)
+        s1 = await get_state(hangout_supervisor, thread_id)
         show_state(s1)
 
         # 如果 LLM 没提取信息，再明确说一次
         if not s1.get("destination"):
-            r1b = await chat(travel_supervisor, thread_id,
+            r1b = await chat(hangout_supervisor, thread_id,
                              "目的地是杭州西湖，时间是这周六", turn="1b")
-            s1 = await get_state(travel_supervisor, thread_id)
+            s1 = await get_state(hangout_supervisor, thread_id)
             show_state(s1)
 
         check("destination 写入 State",
@@ -145,15 +145,15 @@ async def main():
                 print("\n   ⏳ 天气专家应该在工作中...")
             else:
                 # LLM 可能在问出发地或做其他事，推进对话
-                r2 = await chat(travel_supervisor, thread_id,
+                r2 = await chat(hangout_supervisor, thread_id,
                                 "我从浙大紫金港出发", turn=2)
-                s2 = await get_state(travel_supervisor, thread_id)
+                s2 = await get_state(hangout_supervisor, thread_id)
                 show_state(s2)
         else:
             s2 = s1
 
         # 再检查一次天气
-        s_now = await get_state(travel_supervisor, thread_id)
+        s_now = await get_state(hangout_supervisor, thread_id)
         show_state(s_now)
 
         if s_now.get("weather_checked"):
@@ -161,20 +161,20 @@ async def main():
                   f"ok={s_now.get('weather_ok')}, {s_now.get('weather_summary', '')}")
         else:
             # 再推一轮，有时候 LLM 需要多轮
-            r3 = await chat(travel_supervisor, thread_id,
+            r3 = await chat(hangout_supervisor, thread_id,
                             "好的，帮我查一下天气吧", turn=3)
-            s3 = await get_state(travel_supervisor, thread_id)
+            s3 = await get_state(hangout_supervisor, thread_id)
             show_state(s3)
             check("weather_checked 已标记",
                   bool(s3.get("weather_checked")),
                   s3.get("weather_summary", ""))
 
         # ── Turn 3: 提供出发地（如果还没有） ──
-        s_now = await get_state(travel_supervisor, thread_id)
+        s_now = await get_state(hangout_supervisor, thread_id)
         if not s_now.get("origin"):
-            r4 = await chat(travel_supervisor, thread_id,
+            r4 = await chat(hangout_supervisor, thread_id,
                             "我从浙大紫金港出发", turn=4)
-            s4 = await get_state(travel_supervisor, thread_id)
+            s4 = await get_state(hangout_supervisor, thread_id)
             show_state(s4)
             check("origin 写入 State",
                   bool(s4.get("origin")),
@@ -183,7 +183,7 @@ async def main():
             check("origin 写入 State", True, s_now.get("origin", ""))
 
         # ── 最终状态检查 ──
-        s_final = await get_state(travel_supervisor, thread_id)
+        s_final = await get_state(hangout_supervisor, thread_id)
 
         print(f"\n{'='*60}")
         print("  最终 State 快照")
@@ -204,7 +204,7 @@ async def main():
         import traceback
         traceback.print_exc()
     finally:
-        await travel_supervisor.close()
+        await hangout_supervisor.close()
 
     sys.exit(1 if failed else 0)
 

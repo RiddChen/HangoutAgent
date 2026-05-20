@@ -1,4 +1,4 @@
-# TripCrew - 出行企划助手
+# HangoutAgent - 出行企划助手
 
 基于 LangGraph Multi-Agent 架构的智能出行规划系统。通过 Supervisor 编排多个专家 Agent，自动完成天气查询、路线规划、周边推荐、火车/航班查询、住宿推荐和邮件发送的完整出行规划流程。
 
@@ -67,18 +67,18 @@
 ## 项目结构
 
 ```
-travel-agent/
+HangoutAgent/
 ├── app/
 │   ├── main.py                  # FastAPI 入口 + lifespan
 │   ├── agents/
-│   │   └── travel/
+│   │   └── hangout/
 │   │       ├── supervisor.py    # Supervisor 编排 + SSE 流式输出
 │   │       ├── agents.py        # 6 个子 Agent 定义
-│   │       ├── tools.py         # TravelState + Command 工具
+│   │       ├── tools.py         # HangoutState + Command 工具
 │   │       ├── prompts.py       # 所有 Agent 的 System Prompt
 │   │       └── mcp_client.py    # MCP 连接管理 + 工具分组
 │   ├── api/v1/
-│   │   └── travel.py            # REST API 路由
+│   │   └── hangout.py           # REST API 路由
 │   ├── common/
 │   │   ├── logger.py            # 日志
 │   │   └── sse.py               # SSE 事件序列化
@@ -88,7 +88,7 @@ travel-agent/
 │   ├── models/
 │   │   ├── session.py           # Redis/SQLite 会话管理
 │   │   ├── schemas.py           # Pydantic 模型
-│   │   └── travel.py            # 出行数据模型
+│   │   └── hangout.py           # 出行数据模型
 │   └── static/
 │       └── index.html           # 前端 SPA
 ├── test/                        # 测试
@@ -110,8 +110,8 @@ travel-agent/
 ### 1. 克隆 & 安装依赖
 
 ```bash
-git clone https://github.com/your-username/travel-agent.git
-cd travel-agent
+git clone https://github.com/RiddChen/HangoutAgent.git
+cd HangoutAgent
 uv sync
 ```
 
@@ -144,7 +144,7 @@ FLIGHT_MCP_URL=https://open.bigmodel.cn/api/mcp-broker/proxy/aviation/mcp?Author
 # LangSmith 追踪 (可选)
 LANGSMITH_API_KEY=your_langsmith_api_key
 LANGSMITH_TRACING=true
-LANGSMITH_PROJECT=travel-agent
+LANGSMITH_PROJECT=hangout-agent
 ```
 
 **API Key 获取方式：**

@@ -7,10 +7,10 @@ load_dotenv()
 
 
 async def main():
-    from app.agents.travel.supervisor import travel_supervisor
+    from app.agents.hangout.supervisor import hangout_supervisor
 
     print("⏳ 初始化...")
-    await travel_supervisor.init()
+    await hangout_supervisor.init()
     print("✅ 初始化完成\n")
 
     config = {"configurable": {"thread_id": "debug_001", "user_id": "default"}}
@@ -19,7 +19,7 @@ async def main():
     print("📤 发送: 这周六去杭州西湖\n")
     print("─" * 60)
 
-    async for chunk in travel_supervisor.graph.astream(
+    async for chunk in hangout_supervisor.graph.astream(
         inp, config=config, stream_mode="updates"
     ):
         if isinstance(chunk, dict):
@@ -53,7 +53,7 @@ async def main():
     print("\n─" * 60)
 
     # 检查最终 state
-    state = await travel_supervisor.graph.aget_state(config)
+    state = await hangout_supervisor.graph.aget_state(config)
     if state and state.values:
         print("\n📋 最终 State:")
         for k in ("destination", "date", "origin", "weather_checked", "weather_ok",
@@ -62,7 +62,7 @@ async def main():
             if v not in (None, "", False):
                 print(f"   {k} = {v}")
 
-    await travel_supervisor.close()
+    await hangout_supervisor.close()
 
 
 if __name__ == "__main__":

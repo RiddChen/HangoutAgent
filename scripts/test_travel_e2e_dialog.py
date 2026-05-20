@@ -1,4 +1,4 @@
-"""Run an end-to-end SSE dialog against the running travel backend.
+"""Run an end-to-end SSE dialog against the running hangout backend.
 
 This script does not start the server. It assumes the FastAPI backend is
 already running and prints every SSE event so regressions are visible.
@@ -72,7 +72,7 @@ async def send_turn(
     interrupt_decision: dict[str, Any] | None = None,
     timeout_seconds: int = 180,
 ) -> TurnResult:
-    url = f"{base_url.rstrip('/')}/api/v1/travel/send"
+    url = f"{base_url.rstrip('/')}/api/v1/hangout/send"
     body = {
         "message": message,
         "thread_id": thread_id,
@@ -137,7 +137,7 @@ async def send_turn(
 
 
 async def clear_thread(session: aiohttp.ClientSession, base_url: str, thread_id: str) -> None:
-    url = f"{base_url.rstrip('/')}/api/v1/travel/messages"
+    url = f"{base_url.rstrip('/')}/api/v1/hangout/messages"
     async with session.delete(url, params={"thread_id": thread_id}) as response:
         if response.status not in {200, 404}:
             print(f"clear thread failed: HTTP {response.status} {await response.text()}")

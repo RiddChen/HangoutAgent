@@ -1,4 +1,4 @@
-# app/agents/travel/mcp_client.py
+# app/agents/hangout/mcp_client.py
 """MCP 工具获取与分组。"""
 
 import asyncio
@@ -250,7 +250,7 @@ def split_tools(amap_tools: list, weather_tools: list) -> dict:
     return result
 
 
-async def get_travel_tools() -> dict:
+async def get_hangout_tools() -> dict:
     """获取并分组所有 MCP 工具。
 
     返回:

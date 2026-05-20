@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TripCrew 出行企划助手</title>
-  <meta name="description" content="TripCrew Travel Multi-Agent Console">
+  <title>HangoutAgent 出行企划助手</title>
+  <meta name="description" content="HangoutAgent Travel Multi-Agent Console">
   <style>
     :root {
       color-scheme: light;
@@ -594,7 +594,7 @@
           </svg>
         </div>
         <div>
-          <h1>TripCrew</h1>
+          <h1>HangoutAgent</h1>
           <p>智能出行规划</p>
         </div>
       </div>
@@ -700,17 +700,17 @@
     // 本页面只维护出行会话；邮件发送是出行方案后的 HITL 动作。
     function loadSessions() {
       try {
-        return JSON.parse(localStorage.getItem("tripcrew_travel_sessions") || "[]");
+        return JSON.parse(localStorage.getItem("hangout_sessions") || "[]");
       } catch { return []; }
     }
 
     function saveSessions(sessions) {
-      localStorage.setItem("tripcrew_travel_sessions", JSON.stringify(sessions));
+      localStorage.setItem("hangout_sessions", JSON.stringify(sessions));
     }
 
     function ensureCurrentSession() {
       let sessions = loadSessions();
-      let activeId = localStorage.getItem("tripcrew_travel_active");
+      let activeId = localStorage.getItem("hangout_active");
       // 如果没有任何会话或 activeId 不在列表里，创建一个
       if (!sessions.length) {
         const newSession = {
@@ -721,10 +721,10 @@
         sessions.unshift(newSession);
         saveSessions(sessions);
         activeId = newSession.id;
-        localStorage.setItem("tripcrew_travel_active", activeId);
+        localStorage.setItem("hangout_active", activeId);
       } else if (!sessions.find(s => s.id === activeId)) {
         activeId = sessions[0].id;
-        localStorage.setItem("tripcrew_travel_active", activeId);
+        localStorage.setItem("hangout_active", activeId);
       }
       return activeId;
     }
@@ -738,7 +738,7 @@
     ensureCurrentSession();
 
     function currentThreadId() {
-      return localStorage.getItem("tripcrew_travel_active");
+      return localStorage.getItem("hangout_active");
     }
 
     function modeConfig() {
@@ -760,7 +760,7 @@
     }
 
     function historyEndpoint() {
-      return "/api/v1/travel/messages";
+      return "/api/v1/hangout/messages";
     }
 
     async function loadActiveSessionMessages() {
@@ -806,7 +806,7 @@
         item.addEventListener("click", (e) => {
           if (e.target.classList.contains("session-delete")) return;
           if (state.busy || s.id === activeId) return;
-          localStorage.setItem("tripcrew_travel_active", s.id);
+          localStorage.setItem("hangout_active", s.id);
           renderSessionList();
           els.statusPill.textContent = "就绪";
           loadActiveSessionMessages();
@@ -823,7 +823,7 @@
             saveSessions(updatedSessions);
             if (deletingActive) {
               const nextId = ensureCurrentSession();
-              localStorage.setItem("tripcrew_travel_active", nextId);
+              localStorage.setItem("hangout_active", nextId);
             }
             renderSessionList();
             await loadActiveSessionMessages();
@@ -997,7 +997,7 @@
     async function sendToAgent({ message = "", interruptDecision = null, showPlanChoices = true } = {}) {
       setBusy(true);
       try {
-        const endpoint = "/api/v1/travel/send";
+        const endpoint = "/api/v1/hangout/send";
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1124,7 +1124,7 @@
       };
       sessions.unshift(newSession);
       saveSessions(sessions);
-      localStorage.setItem("tripcrew_travel_active", newSession.id);
+      localStorage.setItem("hangout_active", newSession.id);
       renderSessionList();
       renderEmptyState();
       hideInterrupt();

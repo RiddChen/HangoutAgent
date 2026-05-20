@@ -15,7 +15,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.agents.travel.mcp_client import get_amap_tools  # noqa: E402
+from app.agents.hangout.mcp_client import get_amap_tools  # noqa: E402
 from app.common.sse import serialize  # noqa: E402
 
 

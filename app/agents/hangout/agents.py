@@ -1,14 +1,14 @@
-# app/agents/travel/agents.py
+# app/agents/hangout/agents.py
 """子 Agent 定义：天气、路线、周边、邮件、火车、飞机、住宿。"""
 
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from dotenv import load_dotenv
-from app.agents.travel.prompts import (
+from app.agents.hangout.prompts import (
     WEATHER_PROMPT, ROUTE_PROMPT, POI_PROMPT,
     EMAIL_PROMPT, TRAIN_PROMPT, FLIGHT_PROMPT, HOTEL_PROMPT,
 )
-from app.agents.travel.tools import get_final_plan, send_final_plan_email
+from app.agents.hangout.tools import get_final_plan, send_final_plan_email
 
 load_dotenv()
 

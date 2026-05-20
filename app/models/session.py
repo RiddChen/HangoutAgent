@@ -53,7 +53,7 @@ class SessionManager:
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
         from langgraph.store.memory import InMemoryStore
 
-        db_path = os.path.join(os.path.dirname(__file__), "../db/travel.db")
+        db_path = os.path.join(os.path.dirname(__file__), "../db/hangout.db")
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
         self._conn = await aiosqlite.connect(db_path)

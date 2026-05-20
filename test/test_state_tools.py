@@ -1,4 +1,4 @@
-"""测试 TravelState + Command 工具链。
+"""测试 HangoutState + Command 工具链。
 
 运行方式：
     uv run python -m test.test_state_tools
@@ -13,25 +13,25 @@ from langchain_core.messages import ToolMessage
 
 
 # ═══════════════════════════════════════
-# 1. TravelState 定义
+# 1. HangoutState 定义
 # ═══════════════════════════════════════
 
-def test_travel_state():
-    from app.agents.travel.tools import TravelState
+def test_hangout_state():
+    from app.agents.hangout.tools import HangoutState
 
     # 默认值
     annotations = {
-        k: v for k, v in TravelState.__annotations__.items()
+        k: v for k, v in HangoutState.__annotations__.items()
         if k not in ("messages", "remaining_steps")
     }
-    print(f"[1] TravelState 字段 ({len(annotations)} 个):")
+    print(f"[1] HangoutState 字段 ({len(annotations)} 个):")
     for name, typ in annotations.items():
         print(f"    {name}: {typ}")
 
     assert "destination" in annotations
     assert "weather_checked" in annotations
     assert "plan_saved" in annotations
-    print("    ✅ TravelState 定义正确\n")
+    print("    ✅ HangoutState 定义正确\n")
 
 
 # ═══════════════════════════════════════
@@ -39,7 +39,7 @@ def test_travel_state():
 # ═══════════════════════════════════════
 
 def test_update_trip_info():
-    from app.agents.travel.tools import update_trip_info
+    from app.agents.hangout.tools import update_trip_info
 
     # 验证 LLM 看不到 tool_call_id
     assert "tool_call_id" not in update_trip_info.args, \
@@ -73,7 +73,7 @@ def test_update_trip_info():
 # ═══════════════════════════════════════
 
 def test_mark_weather_result():
-    from app.agents.travel.tools import mark_weather_result
+    from app.agents.hangout.tools import mark_weather_result
 
     assert "tool_call_id" not in mark_weather_result.args
     print("[3] mark_weather_result:")
@@ -107,7 +107,7 @@ def test_mark_weather_result():
 # ═══════════════════════════════════════
 
 def test_mark_trip_type():
-    from app.agents.travel.tools import mark_trip_type
+    from app.agents.hangout.tools import mark_trip_type
 
     print("[4] mark_trip_type:")
     for tt in ("same_city", "cross_city"):
@@ -127,7 +127,7 @@ def test_mark_trip_type():
 # ═══════════════════════════════════════
 
 def test_save_final_plan():
-    from app.agents.travel.tools import save_final_plan, set_store
+    from app.agents.hangout.tools import save_final_plan, set_store
     from langgraph.store.memory import InMemoryStore
 
     print("[5] save_final_plan:")
@@ -163,7 +163,7 @@ def test_save_final_plan():
 # ═══════════════════════════════════════
 
 def test_get_final_plan():
-    from app.agents.travel.tools import get_final_plan, save_final_plan, set_store
+    from app.agents.hangout.tools import get_final_plan, save_final_plan, set_store
     from langgraph.store.memory import InMemoryStore
 
     print("[6] get_final_plan:")
@@ -199,7 +199,7 @@ def test_get_final_plan():
 # ═══════════════════════════════════════
 
 def test_prompt_function():
-    from app.agents.travel.supervisor import _make_prompt_fn
+    from app.agents.hangout.supervisor import _make_prompt_fn
 
     print("[7] prompt 函数动态注入:")
     fn = _make_prompt_fn()
@@ -257,18 +257,18 @@ def test_prompt_function():
 # ═══════════════════════════════════════
 
 def test_supervisor_compile():
-    """验证 create_supervisor + TravelState 能编译成功（不连 MCP）。"""
+    """验证 create_supervisor + HangoutState 能编译成功（不连 MCP）。"""
     from langchain.chat_models import init_chat_model
     from langchain.agents import create_agent
     from langgraph_supervisor import create_supervisor
     from langgraph.store.memory import InMemoryStore
     from langgraph.checkpoint.memory import InMemorySaver
 
-    from app.agents.travel.tools import (
-        TravelState, update_trip_info, mark_weather_result,
+    from app.agents.hangout.tools import (
+        HangoutState, update_trip_info, mark_weather_result,
         mark_trip_type, ask_weather_concern, save_final_plan,
     )
-    from app.agents.travel.supervisor import _make_prompt_fn
+    from app.agents.hangout.supervisor import _make_prompt_fn
 
     print("[8] supervisor graph 编译测试:")
 
@@ -298,7 +298,7 @@ def test_supervisor_compile():
             model=model,
             prompt=_make_prompt_fn(),
             tools=sup_tools,
-            state_schema=TravelState,
+            state_schema=HangoutState,
             parallel_tool_calls=True,
             output_mode="full_history",
         ).compile(
@@ -318,11 +318,11 @@ def test_supervisor_compile():
 
 def main():
     print("=" * 50)
-    print("TravelState + Command 工具链测试")
+    print("HangoutState + Command 工具链测试")
     print("=" * 50 + "\n")
 
     tests = [
-        test_travel_state,
+        test_hangout_state,
         test_update_trip_info,
         test_mark_weather_result,
         test_mark_trip_type,

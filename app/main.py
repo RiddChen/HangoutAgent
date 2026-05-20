@@ -2,21 +2,21 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from app.agents.travel.supervisor import travel_supervisor
-from app.api.v1 import travel
+from app.agents.hangout.supervisor import hangout_supervisor
+from app.api.v1 import hangout
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时初始化 supervisor
-    await travel_supervisor.init()
+    await hangout_supervisor.init()
     yield
     # 关闭时清理资源
-    await travel_supervisor.close()
+    await hangout_supervisor.close()
 
 
-app = FastAPI(title="TripCrew 出行企划助手", lifespan=lifespan)
-app.include_router(travel.router, prefix="/api/v1")
+app = FastAPI(title="HangoutAgent 出行企划助手", lifespan=lifespan)
+app.include_router(hangout.router, prefix="/api/v1")
 
 # 静态文件（前端）
 static_dir = os.path.join(os.path.dirname(__file__), "static")

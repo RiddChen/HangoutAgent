@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.agents.travel.mcp_client import get_flight_mcp_tools, get_train_mcp_tools  # noqa: E402
+from app.agents.hangout.mcp_client import get_flight_mcp_tools, get_train_mcp_tools  # noqa: E402
 
 
 async def _list_tools(label: str, loader) -> None:

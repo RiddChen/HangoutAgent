@@ -1,5 +1,5 @@
-# app/agents/travel/tools.py
-"""Travel 自定义工具 + TravelState 定义。
+# app/agents/hangout/tools.py
+"""Hangout 自定义工具 + HangoutState 定义。
 
 架构：
 - 结构化字段（目的地/日期/天气状态等）→ State，每轮自动注入 prompt
@@ -30,7 +30,7 @@ def set_store(store: BaseStore):
 
 # ---- State 定义 ----
 
-class TravelState(AgentState):
+class HangoutState(AgentState):
     """扩展 AgentState，增加出行相关字段。
 
     所有字段都有默认值，旧 checkpoint 加载不会报错。
