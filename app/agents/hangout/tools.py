@@ -12,9 +12,9 @@ from typing import Annotated, Any
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, tool
-from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command, interrupt
+from langchain.agents import AgentState
 
 
 # ---- Store（方案全文用 Store，结构化字段用 State） ----

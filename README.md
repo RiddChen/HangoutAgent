@@ -1,6 +1,6 @@
 # HangoutAgent - 出行企划助手
 
-基于 LangGraph Multi-Agent 架构的智能出行规划系统。通过 Supervisor 编排多个专家 Agent，自动完成天气查询、路线规划、周边推荐、火车/航班查询、住宿推荐和邮件发送的完整出行规划流程。
+基于 LangChain 最新 Multi-Agent 架构（Subagents + Handoffs 混合模式）的智能出行规划系统。Supervisor 通过 tool calling 编排 7 个专家子 Agent，结合 State 驱动 + @dynamic_prompt 中间件实现流程控制，集成 interrupt 人机确认和 MCP 协议对接外部工具，自动完成天气查询、路线规划、周边推荐、火车/航班查询、住宿推荐和邮件发送的完整出行规划流程。
 
 ## 架构
 
@@ -9,54 +9,55 @@
 │                    Frontend (SPA)                    │
 │                  SSE 流式对话界面                      │
 └──────────────────────┬──────────────────────────────┘
-                       │ POST /api/v1/travel/send (SSE)
+                       │ POST /api/v1/hangout/send (SSE)
 ┌──────────────────────▼──────────────────────────────┐
 │                  FastAPI Backend                     │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
-│               TravelSupervisor                      │
+│          Supervisor (create_agent + Middleware)      │
 │  ┌─────────────────────────────────────────────┐    │
-│  │  TravelState (LangGraph State)              │    │
+│  │  HangoutState (自定义 AgentState)            │    │
 │  │  destination / date / origin / weather_ok   │    │
 │  │  trip_type / preferences / plan_saved ...   │    │
 │  └─────────────────────────────────────────────┘    │
 │  ┌─────────────────────────────────────────────┐    │
-│  │  Dynamic Prompt (状态注入 + 阶段提示)         │    │
-│  │  代码驱动流程控制 + Prompt 驱动灵活对话        │    │
+│  │  @dynamic_prompt 中间件                      │    │
+│  │  每轮注入状态 + 阶段提示 → 约束 LLM 行为      │    │
 │  └─────────────────────────────────────────────┘    │
-│  Tools: update_trip_info, mark_weather_result,      │
-│         mark_trip_type, ask_weather_concern,         │
-│         save_final_plan, maps_geo, maps_distance     │
-└──┬───────┬────────┬────────┬───────┬───────┬────────┘
-   │       │        │        │       │       │
-   ▼       ▼        ▼        ▼       ▼       ▼
-┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐
-│天气  │ │路线  │ │POI  │ │火车  │ │航班  │ │住宿  │
-│专家  │ │专家  │ │专家  │ │专家  │ │专家  │ │专家  │
-└──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘
-   │       │       │       │       │       │
-   ▼       ▼       ▼       ▼       ▼       ▼
-┌─────┐ ┌──────┐ ┌─────┐ ┌──────────────────────┐
-│墨迹  │ │高德   │ │高德  │ │   BigModel MCP       │
-│天气  │ │地图   │ │地图  │ │ 12306 / 航班 / 住宿   │
-│MCP  │ │MCP   │ │MCP  │ │                      │
-└─────┘ └──────┘ └─────┘ └──────────────────────┘
+│  Command 工具: update_trip_info, mark_weather_result│
+│  mark_trip_type, ask_weather_concern, save_final_plan│
+│  子 Agent 工具: weather_expert, route_expert, ...   │
+└──────────────┬──────────────────────────────────────┘
+               │ tool calling (Subagents 模式)
+   ┌───────────┼───────────┬───────────┬──────────┐
+   ▼           ▼           ▼           ▼          ▼
+┌─────┐ ┌─────────┐ ┌─────┐ ┌─────┐ ┌──────┐ ┌────┐
+│天气  │ │路线/POI │ │火车  │ │航班  │ │住宿  │ │邮件│
+│专家  │ │专家     │ │专家  │ │专家  │ │专家  │ │专家│
+└──┬──┘ └────┬────┘ └──┬──┘ └──┬──┘ └──┬───┘ └─┬──┘
+   ▼         ▼         ▼      ▼       ▼       ▼
+┌─────┐  ┌──────┐  ┌──────────────────────┐ ┌─────┐
+│墨迹  │  │高德   │  │   BigModel MCP       │ │Gmail│
+│天气  │  │地图   │  │ 12306 / 航班 / 住宿   │ │API  │
+│MCP  │  │MCP   │  │                      │ │     │
+└─────┘  └──────┘  └──────────────────────┘ └─────┘
 ```
 
 ### 核心设计
 
-- **Supervisor 模式**：一个 Supervisor 编排 6 个专家子 Agent，负责对话管理、状态更新和结果汇总
-- **State + Prompt 双驱动**：结构化字段（目的地/日期/天气状态等）存在 `TravelState` 中，每轮自动注入 System Prompt；阶段提示（"必须先查天气"）由代码根据 State 生成，约束 LLM 行为
-- **Command 工具**：`update_trip_info`、`mark_weather_result` 等工具返回 `Command(update={...})`，原子性更新 State
+- **Subagents 模式**：7 个专家子 Agent 通过 `create_agent` 创建，包装为 tool 供 Supervisor 通过 tool calling 调度
+- **Handoffs 模式**：`HangoutState` + `Command(update={...})` 实现状态驱动的阶段流转，确保流程顺序（先天气 → 再路线 → 再方案）
+- **@dynamic_prompt 中间件**：每轮模型调用前，自动注入当前出行状态和阶段提示到系统 Prompt，用代码约束 LLM 行为
 - **Interrupt 机制**：天气确认、邮件发送等需要用户决策的节点通过 `interrupt()` 暂停，前端弹窗确认后恢复
+- **MCP 协议集成**：通过 langchain-mcp-adapters 对接高德地图、墨迹天气、12306、航班等外部工具服务
 
 ## 技术栈
 
 | 类别 | 技术 |
 |------|------|
 | LLM | DeepSeek Chat |
-| Agent 框架 | LangChain + LangGraph + langgraph-supervisor |
+| Agent 框架 | LangChain (create_agent + @dynamic_prompt + Command) |
 | MCP 工具 | langchain-mcp-adapters (高德地图 / 墨迹天气 / 12306 / 航班) |
 | 后端 | FastAPI + SSE (sse-starlette) |
 | 状态持久化 | Redis Stack (Checkpointer + Store) / SQLite (fallback) |

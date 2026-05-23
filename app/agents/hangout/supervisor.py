@@ -1,5 +1,12 @@
 # app/agents/hangout/supervisor.py
-"""HangoutSupervisor：编排天气/路线/POI/邮件/12306/住宿子 Agent。"""
+"""HangoutSupervisor：基于 Subagents + Handoffs 混合模式编排子 Agent。
+
+架构（LangChain 最新推荐）：
+- Subagents 模式：子 Agent 包装为 tool，Supervisor 通过 tool calling 调度
+- Handoffs 模式：HangoutState + Command 驱动阶段流转
+- @dynamic_prompt 中间件：每轮自动注入当前状态和阶段提示
+- interrupt 机制：天气确认、邮件发送等人机交互
+"""
 
 import asyncio
 import traceback
@@ -7,9 +14,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
+from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
+from langchain.agents.middleware import dynamic_prompt, ModelRequest
+from langchain_core.tools import tool
 from langgraph.types import Command
-from langgraph_supervisor import create_supervisor
 
 from app.agents.hangout.agents import (
     create_weather_agent, create_route_agent, create_poi_agent,
@@ -33,77 +42,103 @@ from app.models.session import session_manager
 load_dotenv()
 
 
-def _make_prompt_fn():
-    """返回一个接收 state 的 callable，每轮模型调用时自动注入当前状态。
+# ═══════════════════════════════════════
+# 动态 Prompt 中间件（@dynamic_prompt）
+# ═══════════════════════════════════════
 
-    注意：callable prompt 必须返回 [SystemMessage, ...messages] 列表，
-    不能只返回字符串，否则框架不会拼接对话历史。
+_FIELD_LABELS = {
+    "destination": "目的地", "date": "日期", "origin": "出发地",
+    "transport_preference": "交通偏好", "dining_preference": "用餐偏好",
+    "nearby_preference": "周边偏好", "hotel_needed": "住宿需求",
+}
+
+
+def _build_dynamic_prompt(state: dict) -> str:
+    """根据 HangoutState 构建动态系统提示词。
+
+    每轮模型调用前自动注入：当前日期、已收集的出行信息、阶段提示。
     """
-    from langchain_core.messages import SystemMessage
-
     now = datetime.now(ZoneInfo("Asia/Shanghai"))
     wd = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     today = f"{now.year}年{now.month}月{now.day}日（{wd[now.weekday()]}）"
-    base = f"{SUPERVISOR_PROMPT}\n\n## 当前日期\n今天是 {today}。所有相对日期以此为准。"
 
-    _field_labels = {
-        "destination": "目的地", "date": "日期", "origin": "出发地",
-        "transport_preference": "交通偏好", "dining_preference": "用餐偏好",
-        "nearby_preference": "周边偏好", "hotel_needed": "住宿需求",
-    }
+    parts = [f"{SUPERVISOR_PROMPT}\n\n## 当前日期\n今天是 {today}。所有相对日期以此为准。"]
 
-    def prompt_fn(state: dict) -> list:
-        parts = [base]
+    # ── 自动注入已收集的出行信息 ──
+    info_lines = []
+    for field, label in _FIELD_LABELS.items():
+        val = state.get(field, "")
+        if val:
+            info_lines.append(f"- {label}：{val}")
 
-        # ── 自动注入已收集的出行信息 ──
-        info_lines = []
-        for field, label in _field_labels.items():
-            val = state.get(field, "")
-            if val:
-                info_lines.append(f"- {label}：{val}")
+    trip_type = state.get("trip_type", "")
+    if trip_type:
+        info_lines.append(f"- 出行类型：{'同城' if trip_type == 'same_city' else '跨城'}")
 
-        trip_type = state.get("trip_type", "")
-        if trip_type:
-            info_lines.append(f"- 出行类型：{'同城' if trip_type == 'same_city' else '跨城'}")
+    if state.get("weather_checked"):
+        ok = state.get("weather_ok", False)
+        summary = state.get("weather_summary", "")
+        info_lines.append(f"- 天气：{'✅ 适合出行' if ok else '⚠️ 不太理想'}（{summary}）")
 
-        if state.get("weather_checked"):
-            ok = state.get("weather_ok", False)
-            summary = state.get("weather_summary", "")
-            info_lines.append(f"- 天气：{'✅ 适合出行' if ok else '⚠️ 不太理想'}（{summary}）")
+    if state.get("plan_saved"):
+        info_lines.append("- 最终方案：✅ 已保存")
 
-        if state.get("plan_saved"):
-            info_lines.append("- 最终方案：✅ 已保存")
+    if info_lines:
+        parts.append("\n## 当前已收集的出行信息（自动注入，无需调工具读取）\n" + "\n".join(info_lines))
 
-        if info_lines:
-            parts.append("\n## 当前已收集的出行信息（自动注入，无需调工具读取）\n" + "\n".join(info_lines))
+    # ── 阶段提示：用代码约束 LLM 下一步 ──
+    dest = state.get("destination", "")
+    date = state.get("date", "")
+    weather_checked = state.get("weather_checked", False)
+    weather_ok = state.get("weather_ok", False)
 
-        # ── 阶段提示：用代码约束 LLM 下一步 ──
-        dest = state.get("destination", "")
-        date = state.get("date", "")
-        weather_checked = state.get("weather_checked", False)
-        weather_ok = state.get("weather_ok", False)
+    hints = []
+    if dest and date and not weather_checked:
+        hints.append("目的地和日期已齐全，下一步**必须**调用 weather_expert 查天气，不能跳过。")
+    if weather_checked and not weather_ok:
+        hints.append("天气不理想，**必须**调用 ask_weather_concern 询问用户是否在意，不能跳过。")
+    if weather_checked and weather_ok and not state.get("origin", ""):
+        hints.append("天气已通过，但还缺出发地，请询问用户从哪里出发。")
 
-        hints = []
-        if dest and date and not weather_checked:
-            hints.append("目的地和日期已齐全，下一步**必须** transfer_to_weather_expert 查天气，不能跳过。")
-        if weather_checked and not weather_ok:
-            hints.append("天气不理想，**必须**调用 ask_weather_concern 询问用户是否在意，不能跳过。")
-        if weather_checked and weather_ok and not state.get("origin", ""):
-            hints.append("天气已通过，但还缺出发地，请询问用户从哪里出发。")
+    if hints:
+        parts.append("\n## ⚠️ 阶段提示（必须遵守）\n" + "\n".join(f"- {h}" for h in hints))
 
-        if hints:
-            parts.append("\n## ⚠️ 阶段提示（必须遵守）\n" + "\n".join(f"- {h}" for h in hints))
-
-        system_text = "\n".join(parts)
-
-        # 必须返回 [SystemMessage, ...对话历史]，框架不会自动拼接 messages
-        messages = state.get("messages", [])
-        return [SystemMessage(content=system_text)] + list(messages)
-
-    return prompt_fn
+    return "\n".join(parts)
 
 
-# ---- 流式工具 ----
+@dynamic_prompt
+def _inject_state_prompt(request: ModelRequest) -> str:
+    """@dynamic_prompt 中间件：每轮模型调用前注入状态到系统提示词。"""
+    return _build_dynamic_prompt(request.state)
+
+
+# ═══════════════════════════════════════
+# 子 Agent 包装为 Tool（Subagents 模式）
+# ═══════════════════════════════════════
+
+def _wrap_agent_as_tool(agent, name: str, description: str):
+    """将子 Agent 包装为 Supervisor 可调用的 tool。
+
+    Supervisor 通过 tool calling 决定何时调用哪个子 Agent，
+    子 Agent 独立运行后将结果返回给 Supervisor 汇总。
+    """
+    @tool(name, description=description)
+    async def _call_agent(request: str) -> str:
+        result = await agent.ainvoke({"messages": [{"role": "user", "content": request}]})
+        last_msg = result["messages"][-1]
+        content = getattr(last_msg, "content", "")
+        if isinstance(content, list):
+            return "".join(
+                item if isinstance(item, str) else (item.get("text", "") if isinstance(item, dict) else "")
+                for item in content
+            )
+        return content or ""
+    return _call_agent
+
+
+# ═══════════════════════════════════════
+# 流式输出辅助
+# ═══════════════════════════════════════
 
 def _unpack(chunk):
     if isinstance(chunk, tuple) and len(chunk) == 2:
@@ -147,15 +182,16 @@ def _is_noise(s: str) -> bool:
 
 
 def _visible(meta: dict) -> bool:
-    """只展示 supervisor 节点的消息，子 agent 的消息不直接流给前端。
+    """只展示 model 节点的消息（Supervisor 的回复），tool 节点不直接流给前端。
 
-    子 agent 结果由 supervisor 聚合后统一输出，避免内容重复和泄露。
+    子 Agent 作为 tool 执行，结果由 Supervisor 聚合后统一输出。
     """
     node = meta.get("langgraph_node", "")
-    return node == "supervisor"
+    return node == "model"
 
 
-_NODE_HINTS = {
+# tool 名称 → 状态提示（检测 tool call 时发送给前端）
+_TOOL_HINTS = {
     "weather_expert": "天气专家正在调研...",
     "route_expert": "路线专家正在规划...",
     "poi_expert": "正在搜索周边...",
@@ -174,7 +210,9 @@ async def _emit_deltas(text: str):
         await asyncio.sleep(0.005)
 
 
-# ---- HangoutSupervisor ----
+# ═══════════════════════════════════════
+# HangoutSupervisor
+# ═══════════════════════════════════════
 
 class HangoutSupervisor:
     def __init__(self):
@@ -189,24 +227,53 @@ class HangoutSupervisor:
         # 注入 store 给 tools.py 使用
         set_store(session_manager.store)
 
-        # 子 Agent（可用的才注册）
-        agents = [
-            create_weather_agent(tools["weather"]),
-            create_route_agent(tools["route"]),
-            create_poi_agent(tools["poi"]),
-            create_email_agent(),
+        # ── 子 Agent → tool（Subagents 模式） ──
+        agent_tools = [
+            _wrap_agent_as_tool(
+                create_weather_agent(tools["weather"]),
+                "weather_expert",
+                "查询目的地天气情况。传入目的地和日期，返回天气信息和出行建议。",
+            ),
+            _wrap_agent_as_tool(
+                create_route_agent(tools["route"]),
+                "route_expert",
+                "规划交通路线。传入出发地和目的地，返回驾车/公交/步行路线方案。",
+            ),
+            _wrap_agent_as_tool(
+                create_poi_agent(tools["poi"]),
+                "poi_expert",
+                "搜索目的地周边餐饮、景点、娱乐等 POI 信息。",
+            ),
+            _wrap_agent_as_tool(
+                create_email_agent(),
+                "email_expert",
+                "发送出行方案邮件。调用前必须先 save_final_plan 保存方案。",
+            ),
         ]
+
         if tools["train"]:
-            agents.append(create_train_agent(tools["train"]))
+            agent_tools.append(_wrap_agent_as_tool(
+                create_train_agent(tools["train"]),
+                "train_expert",
+                "查询火车票信息（跨城出行时使用）。传入出发站、到达站和日期。",
+            ))
             logger.info("12306 专家已启用")
         if tools["flight"]:
-            agents.append(create_flight_agent(tools["flight"]))
+            agent_tools.append(_wrap_agent_as_tool(
+                create_flight_agent(tools["flight"]),
+                "flight_expert",
+                "查询航班信息（跨城出行时使用）。传入出发城市、到达城市和日期。",
+            ))
             logger.info("飞机票专家已启用")
         if tools["hotel"]:
-            agents.append(create_hotel_agent(tools["hotel"]))
+            agent_tools.append(_wrap_agent_as_tool(
+                create_hotel_agent(tools["hotel"]),
+                "hotel_expert",
+                "查询住宿信息。传入目的地和入住日期。",
+            ))
             logger.info("住宿专家已启用")
 
-        # Supervisor 工具（返回 Command 的工具会自动更新 State）
+        # ── Supervisor 自有工具（Command 工具 + 地图工具） ──
         sup_tools = [
             update_trip_info,
             mark_weather_result,
@@ -219,20 +286,21 @@ class HangoutSupervisor:
             if t:
                 sup_tools.append(t)
 
+        # ── 创建 Supervisor Agent（最新 create_agent API） ──
         model = init_chat_model("deepseek-chat", streaming=True)
-        self.graph = create_supervisor(
-            agents=agents,
+        all_tools = agent_tools + sup_tools
+
+        self.graph = create_agent(
             model=model,
-            prompt=_make_prompt_fn(),
-            tools=sup_tools,
+            tools=all_tools,
+            system_prompt=SUPERVISOR_PROMPT,       # 基础 prompt（会被 middleware 覆盖）
             state_schema=HangoutState,
-            parallel_tool_calls=True,
-            output_mode="full_history",
-        ).compile(
+            middleware=[_inject_state_prompt],      # @dynamic_prompt 中间件
             checkpointer=session_manager.checkpointer,
             store=session_manager.store,
         )
-        logger.info(f"HangoutSupervisor 初始化完成 ✓ ({len(agents)} 个子 Agent)")
+
+        logger.info(f"HangoutSupervisor 初始化完成 ✓ ({len(agent_tools)} 个子 Agent)")
 
     async def close(self):
         await session_manager.close()
@@ -259,14 +327,17 @@ class HangoutSupervisor:
                 if kind == "messages":
                     token, meta = data
 
-                    # ── 状态提示：节点一开始工作就发，不等完成 ──
-                    node = meta.get("langgraph_node", "")
-                    hint = _NODE_HINTS.get(node)
-                    if hint and hint not in seen_hints:
-                        seen_hints.add(hint)
-                        yield sse_event("status", hint)
+                    # ── 状态提示：检测 tool call 名称，发送前端提示 ──
+                    tool_calls = getattr(token, "tool_call_chunks", None) or getattr(token, "tool_calls", None) or []
+                    for tc in tool_calls:
+                        tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                        if tc_name:
+                            hint = _TOOL_HINTS.get(tc_name)
+                            if hint and hint not in seen_hints:
+                                seen_hints.add(hint)
+                                yield sse_event("status", hint)
 
-                    # ── 只展示 supervisor 的文字，子 agent 不直接流 ──
+                    # ── 只展示 model 节点的文字，tool 节点不直接流 ──
                     if token.__class__.__name__ in ("AIMessage", "AIMessageChunk") and _visible(meta):
                         t = _text(getattr(token, "content", "")).strip()
                         if t and not _is_noise(t):
