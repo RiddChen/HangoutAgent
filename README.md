@@ -1,6 +1,6 @@
 # HangoutAgent - 出行企划助手
 
-基于 LangChain 最新 Multi-Agent 架构的智能出行规划系统。采用 **Subagents + Handoffs 混合模式**，Supervisor 通过 tool calling 编排 7 个专家子 Agent，结合自定义 State + `@dynamic_prompt` 中间件 + `Command` 状态更新 + `interrupt` 人机确认，实现从天气查询到邮件发送的完整出行规划闭环。
+基于 LangChain 最新 Multi-Agent 架构的智能出行规划系统。采用 **Subagents + Handoffs 混合模式**，Orchestrator 通过 tool calling 编排 7 个专家子 Agent，结合自定义 State + `@dynamic_prompt` 中间件 + `Command` 状态更新 + `interrupt` 人机确认，实现从天气查询到邮件发送的完整出行规划闭环。
 
 ## 系统架构
 
@@ -20,7 +20,7 @@
                                  │
 ┌────────────────────────────────▼─────────────────────────────────────┐
 │                                                                      │
-│                    Supervisor Agent (create_agent)                    │
+│                    Orchestrator Agent (create_agent)                    │
 │                                                                      │
 │  ┌────────────────────────────────────────────────────────────────┐  │
 │  │                  @dynamic_prompt 中间件                         │  │
@@ -95,7 +95,7 @@
                ▼
          ┌───────────┐
     ┌───▶│   model   │───┐
-    │    │(Supervisor)│   │
+    │    │(Orchestrator)│   │
     │    └───────────┘   │
     │          │          │
     │          ▼          ▼
@@ -108,21 +108,21 @@
     └──────────┘
 ```
 
-- **model 节点**：Supervisor LLM，负责对话、路由决策、结果汇总
+- **model 节点**：Orchestrator LLM，负责对话、路由决策、结果汇总
 - **tools 节点**：执行所有工具调用——子 Agent（weather_expert 等）和 Command 工具（update_trip_info 等）
-- **循环**：model → tools → model，直到 Supervisor 决定不再调用工具，输出最终回复
+- **循环**：model → tools → model，直到 Orchestrator 决定不再调用工具，输出最终回复
 
 ### 核心设计
 
 **Subagents 模式（子 Agent 调度）**
 
-每个子 Agent 通过 `create_agent` 独立创建，拥有专属 Prompt 和 MCP 工具集，然后被包装为 Supervisor 的 tool。Supervisor 通过 tool calling 决定何时调用哪个子 Agent，子 Agent 独立执行后将结果返回给 Supervisor 汇总。
+每个子 Agent 通过 `create_agent` 独立创建，拥有专属 Prompt 和 MCP 工具集，然后被包装为 Orchestrator 的 tool。Orchestrator 通过 tool calling 决定何时调用哪个子 Agent，子 Agent 独立执行后将结果返回给 Orchestrator 汇总。
 
 ```python
 # 子 Agent 创建
 weather_agent = create_agent(model, tools=[...], system_prompt=WEATHER_PROMPT)
 
-# 包装为 Supervisor 的 tool
+# 包装为 Orchestrator 的 tool
 @tool("weather_expert", description="查询目的地天气")
 async def call_weather(request: str) -> str:
     result = await weather_agent.ainvoke({"messages": [...]})
@@ -237,7 +237,7 @@ HangoutAgent/
 │   ├── main.py                    # FastAPI 入口 + lifespan（初始化 MCP + Agent）
 │   ├── agents/
 │   │   └── hangout/
-│   │       ├── supervisor.py      # Supervisor Agent 编排 + SSE 流式输出
+│   │       ├── orchestrator.py      # Orchestrator Agent 编排 + SSE 流式输出
 │   │       │                      #   · create_agent + @dynamic_prompt 中间件
 │   │       │                      #   · 子 Agent 包装为 tool（Subagents 模式）
 │   │       │                      #   · 流式事件处理 + interrupt 转发

@@ -11,7 +11,7 @@
 - [Phase 3：MCP 外部工具接入](#phase-3mcp-外部工具接入)
 - [Phase 4：State 与 Command 工具](#phase-4state-与-command-工具)
 - [Phase 5：子 Agent 定义](#phase-5子-agent-定义)
-- [Phase 6：Supervisor 编排](#phase-6supervisor-编排)
+- [Phase 6：Orchestrator 编排](#phase-6orchestrator-编排)
 - [Phase 7：API 路由与流式输出](#phase-7api-路由与流式输出)
 - [Phase 8：前端 SPA](#phase-8前端-spa)
 - [Phase 9：Gmail 邮件集成](#phase-9gmail-邮件集成)
@@ -337,7 +337,7 @@ async def get_amap_tools() -> list:
 
 | 分组 | 包含的工具 | 分配给 |
 |------|-----------|--------|
-| supervisor | maps_geo, maps_distance | Supervisor 直接用（判断同城/跨城） |
+| orchestrator | maps_geo, maps_distance | Orchestrator 直接用（判断同城/跨城） |
 | weather | 墨迹天气全套（优先）或 maps_weather（回退） | weather_expert |
 | route | maps_geo + 4 种路线规划 + maps_distance | route_expert |
 | poi | maps_geo + maps_around_search + maps_text_search | poi_expert |
@@ -472,10 +472,10 @@ Prompt 设计原则：
 - **明确职责边界**：天气专家只查天气，不规划路线
 - **规定输出格式**：列出需要输出的信息项
 - **写明禁止项**：不要编造数据、不要调用不该调的工具
-- **Supervisor Prompt 最复杂**：包含完整的 10 步主流程和约束规则
+- **Orchestrator Prompt 最复杂**：包含完整的 10 步主流程和约束规则
 
 ```python
-SUPERVISOR_PROMPT = """你是 HangoutAgent 出行助手的 Supervisor。
+ORCHESTRATOR_PROMPT = """你是 HangoutAgent 出行助手的 Orchestrator。
 ...
 ## 必须遵守的主流程
 0. 不做 IP 定位...
@@ -538,18 +538,18 @@ def create_email_agent():
 
 ---
 
-## Phase 6：Supervisor 编排
+## Phase 6：Orchestrator 编排
 
-### 6.1 `app/agents/hangout/supervisor.py` — 核心编排逻辑
+### 6.1 `app/agents/hangout/orchestrator.py` — 核心编排逻辑
 
 这是整个项目最复杂的文件。它做三件事：
-1. **初始化**：连接 MCP、创建子 Agent、组装 Supervisor
+1. **初始化**：连接 MCP、创建子 Agent、组装 Orchestrator
 2. **`@dynamic_prompt` 中间件**：每轮注入状态到 Prompt
 3. **SSE 流式输出**：将 LangGraph 的流式事件转为前端可消费的 SSE
 
 #### 6.1.1 Subagents 模式：子 Agent 包装为 Tool
 
-核心思想：每个子 Agent 被包装成一个普通的 `@tool` 函数。Supervisor 看到的是 "weather_expert 工具"，不知道它背后是另一个 Agent。
+核心思想：每个子 Agent 被包装成一个普通的 `@tool` 函数。Orchestrator 看到的是 "weather_expert 工具"，不知道它背后是另一个 Agent。
 
 ```python
 from langchain_core.tools import tool
@@ -578,7 +578,7 @@ from langchain.agents.middleware import dynamic_prompt, ModelRequest
 def _inject_state_prompt(request: ModelRequest) -> str:
     """每轮模型调用前，读取 State，生成动态 Prompt。"""
     state = request.state
-    parts = [SUPERVISOR_PROMPT]
+    parts = [ORCHESTRATOR_PROMPT]
 
     # 注入已收集的信息
     if state.get("destination"):
@@ -599,10 +599,10 @@ def _inject_state_prompt(request: ModelRequest) -> str:
 用户消息 → State 更新 → @dynamic_prompt 读 State 生成 Prompt → LLM 看到新 Prompt → 做出决策
 ```
 
-#### 6.1.3 Supervisor 组装
+#### 6.1.3 Orchestrator 组装
 
 ```python
-class HangoutSupervisor:
+class HangoutOrchestrator:
     async def init(self):
         # 1. 初始化持久化
         await session_manager.init()
@@ -628,12 +628,12 @@ class HangoutSupervisor:
             save_final_plan,
         ]
 
-        # 5. 创建 Supervisor Agent
+        # 5. 创建 Orchestrator Agent
         model = init_chat_model("deepseek-chat", streaming=True)
         self.graph = create_agent(
             model=model,
             tools=all_tools,
-            system_prompt=SUPERVISOR_PROMPT,
+            system_prompt=ORCHESTRATOR_PROMPT,
             state_schema=HangoutState,        # 自定义 State
             middleware=[_inject_state_prompt], # 动态 Prompt 中间件
             checkpointer=session_manager.checkpointer,
@@ -646,7 +646,7 @@ class HangoutSupervisor:
 | 参数 | 作用 |
 |------|------|
 | `model` | LLM 实例（DeepSeek Chat） |
-| `tools` | Supervisor 可用的所有工具（子 Agent + Command + 地图） |
+| `tools` | Orchestrator 可用的所有工具（子 Agent + Command + 地图） |
 | `system_prompt` | 基础 Prompt（会被 middleware 覆盖） |
 | `state_schema` | 自定义 State 类型（扩展了 AgentState） |
 | `middleware` | 中间件列表（@dynamic_prompt） |
@@ -680,7 +680,7 @@ async def generate_sse(self, thread_id, message, interrupt_decision=None):
                 if tc.get("name") in _TOOL_HINTS:
                     yield sse_event("status", _TOOL_HINTS[tc["name"]])
 
-            # 只展示 model 节点的文字（Supervisor 的回复）
+            # 只展示 model 节点的文字（Orchestrator 的回复）
             if meta.get("langgraph_node") == "model":
                 yield sse_event("message_delta", text)
 
@@ -698,7 +698,7 @@ async def generate_sse(self, thread_id, message, interrupt_decision=None):
 - `"updates"`：每个节点执行完毕后推送完整更新。用于捕获 interrupt。
 
 **过滤逻辑**：
-- `langgraph_node == "model"` → Supervisor 的回复，展示给用户
+- `langgraph_node == "model"` → Orchestrator 的回复，展示给用户
 - `langgraph_node == "tools"` → 工具执行过程（包括子 Agent 内部），不展示
 - `_is_noise()` → 过滤掉 "transferring..." 等框架噪音
 
@@ -720,7 +720,7 @@ router = APIRouter()
 @router.post("/hangout/send")
 async def send_hangout(request: HangoutRequest):
     return EventSourceResponse(
-        hangout_supervisor.generate_sse(
+        hangout_orchestrator.generate_sse(
             thread_id=request.thread_id,
             message=request.message,
             interrupt_decision=request.interrupt_decision,
@@ -730,12 +730,12 @@ async def send_hangout(request: HangoutRequest):
 # GET /api/v1/hangout/messages — 获取历史（切换会话时用）
 @router.get("/hangout/messages")
 async def get_messages(thread_id: str):
-    return await hangout_supervisor.get_messages(thread_id)
+    return await hangout_orchestrator.get_messages(thread_id)
 
 # DELETE /api/v1/hangout/messages — 清除历史
 @router.delete("/hangout/messages")
 async def clear_messages(thread_id: str):
-    await hangout_supervisor.clear_messages(thread_id)
+    await hangout_orchestrator.clear_messages(thread_id)
 ```
 
 **HangoutRequest 模型**：
@@ -757,9 +757,9 @@ from fastapi import FastAPI
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await hangout_supervisor.init()   # 启动时：连 MCP、创建 Agent
+    await hangout_orchestrator.init()   # 启动时：连 MCP、创建 Agent
     yield
-    await hangout_supervisor.close()  # 关闭时：释放连接
+    await hangout_orchestrator.close()  # 关闭时：释放连接
 
 app = FastAPI(title="HangoutAgent 出行企划助手", lifespan=lifespan)
 app.include_router(hangout.router, prefix="/api/v1")
@@ -862,8 +862,8 @@ def get_gmail_tools():
 邮件不是直接发的——经过 interrupt 人机确认：
 
 ```
-1. 用户确认方案 → Supervisor 调用 save_final_plan
-2. Supervisor 调用 email_expert 工具
+1. 用户确认方案 → Orchestrator 调用 save_final_plan
+2. Orchestrator 调用 email_expert 工具
 3. email_expert 内部：
    a. get_final_plan → 从 Store 读取方案
    b. send_final_plan_email → 触发 interrupt
@@ -889,11 +889,11 @@ def get_gmail_tools():
 
 **QPS 限制**：route_expert 和 poi_expert 都用高德 API，并发调用会触发 `CUQPS_HAS_EXCEEDED_THE_LIMIT`。
 
-解决方案：在 Supervisor Prompt 里加约束——"route_expert 和 poi_expert 不能并发，必须串行调用"。用 Prompt 约束比代码重试更可靠（试过 monkey-patch 工具加重试，Pydantic 模型限制导致失败）。
+解决方案：在 Orchestrator Prompt 里加约束——"route_expert 和 poi_expert 不能并发，必须串行调用"。用 Prompt 约束比代码重试更可靠（试过 monkey-patch 工具加重试，Pydantic 模型限制导致失败）。
 
 **State 字段设计**：一开始方案全文也放在 State 里，导致每轮 Prompt 都包含几千字的方案。改为 Store 后，State 只存标志位 `plan_saved: bool`，方案全文按 namespace 存 Store。
 
-**子 Agent 信息泄露**：子 Agent 的内部思考、工具调用过程不应展示给用户。通过 `_visible(meta)` 过滤，只展示 `model` 节点（Supervisor）的输出。
+**子 Agent 信息泄露**：子 Agent 的内部思考、工具调用过程不应展示给用户。通过 `_visible(meta)` 过滤，只展示 `model` 节点（Orchestrator）的输出。
 
 ---
 
@@ -921,16 +921,16 @@ LangGraph（图执行引擎）
 
 | 概念 | 本项目中的体现 |
 |------|--------------|
-| **Subagents** | 子 Agent 包装为 tool，Supervisor 通过 tool calling 调度 |
+| **Subagents** | 子 Agent 包装为 tool，Orchestrator 通过 tool calling 调度 |
 | **Handoffs** | HangoutState + Command 驱动阶段流转（先天气 → 再路线） |
-| **混合使用** | Supervisor 既调度子 Agent（Subagents），又管理状态流转（Handoffs） |
+| **混合使用** | Orchestrator 既调度子 Agent（Subagents），又管理状态流转（Handoffs） |
 
 ### 数据流向
 
 ```
 用户输入
   → FastAPI 路由
-    → HangoutSupervisor.generate_sse()
+    → HangoutOrchestrator.generate_sse()
       → self.graph.astream()
         → model 节点：LLM 看到 @dynamic_prompt 注入的 Prompt → 决定调哪个 tool
           → tools 节点：执行 tool
@@ -947,8 +947,8 @@ LangGraph（图执行引擎）
 
 ```
 main.py
-  ├── api/v1/hangout.py          → supervisor.py
-  └── supervisor.py
+  ├── api/v1/hangout.py          → orchestrator.py
+  └── orchestrator.py
         ├── agents.py            → prompts.py, tools.py
         ├── tools.py             → (AgentState, Command, interrupt, Store)
         ├── mcp_client.py        → (.env 配置)

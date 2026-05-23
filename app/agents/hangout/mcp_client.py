@@ -220,7 +220,7 @@ def split_tools(amap_tools: list, weather_tools: list) -> dict:
     tool_index = {t.name: t for t in amap_tools}
 
     groups = {
-        "supervisor": ["maps_geo", "maps_distance", "maps_schema_personal_map"],
+        "orchestrator": ["maps_geo", "maps_distance", "maps_schema_personal_map"],
         "weather": ["maps_weather"],  # 回退用，优先用墨迹
         "route": [
             "maps_geo",
@@ -255,7 +255,7 @@ async def get_hangout_tools() -> dict:
 
     返回:
         {
-            "supervisor": [...],   # maps_geo, maps_distance, maps_schema_personal_map
+            "orchestrator": [...], # maps_geo, maps_distance, maps_schema_personal_map
             "weather": [...],      # 墨迹全套 或 maps_weather
             "route": [...],        # maps_geo + 4个 direction + maps_distance
             "poi": [...],          # maps_geo + search 工具

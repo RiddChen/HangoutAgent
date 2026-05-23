@@ -2,17 +2,17 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from app.agents.hangout.supervisor import hangout_supervisor
+from app.agents.hangout.orchestrator import hangout_orchestrator
 from app.api.v1 import hangout
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时初始化 supervisor
-    await hangout_supervisor.init()
+    # 启动时初始化主 Agent
+    await hangout_orchestrator.init()
     yield
     # 关闭时清理资源
-    await hangout_supervisor.close()
+    await hangout_orchestrator.close()
 
 
 app = FastAPI(title="HangoutAgent 出行企划助手", lifespan=lifespan)

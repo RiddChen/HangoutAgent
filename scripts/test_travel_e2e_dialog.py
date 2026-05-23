@@ -179,8 +179,8 @@ def print_summary(turns: list[TurnResult]) -> int:
         "火车 MCP 查询被触发": train_index is not None or "火车" in full_text or "高铁" in full_text,
         "航班 MCP 查询被触发": flight_index is not None or "航班" in full_text or "飞机" in full_text,
         "没有 SSE error": not all_errors,
-        "没有暴露 transfer 噪声": "Transferring back to supervisor" not in full_text
-        and "transfer_back_to_supervisor" not in full_text,
+        "没有暴露工具交接噪声": "transferring" not in full_text.lower()
+        and "transfer_back" not in full_text,
         "没有暴露原始 MCP JSON": '"code"' not in full_text and '\\"code\\"' not in full_text,
     }
 

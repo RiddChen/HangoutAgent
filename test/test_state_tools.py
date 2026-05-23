@@ -199,26 +199,25 @@ def test_get_final_plan():
 # ═══════════════════════════════════════
 
 def test_prompt_function():
-    from app.agents.hangout.supervisor import _make_prompt_fn
+    from app.agents.hangout.orchestrator import _build_dynamic_prompt
 
     print("[7] prompt 函数动态注入:")
-    fn = _make_prompt_fn()
 
     # 场景 A：空状态 — 不应有动态注入的信息行（"- 目的地：" 等）
-    p = fn({})
+    p = _build_dynamic_prompt({})
     assert "- 目的地：" not in p, "空状态不应注入目的地"
     assert "⚠️ 阶段提示" not in p
     print("    空状态: ✅ 无动态注入内容")
 
     # 场景 B：有目的地 + 日期，未查天气
-    p = fn({"destination": "西湖", "date": "周六"})
+    p = _build_dynamic_prompt({"destination": "西湖", "date": "周六"})
     assert "目的地：西湖" in p
     assert "日期：周六" in p
     assert "必须" in p and "weather_expert" in p
     print("    有目的地+日期: ✅ 注入字段 + 阶段提示'必须查天气'")
 
     # 场景 C：天气已查，适合出行，缺出发地
-    p = fn({
+    p = _build_dynamic_prompt({
         "destination": "西湖", "date": "周六",
         "weather_checked": True, "weather_ok": True,
         "weather_summary": "晴，26°C",
@@ -228,7 +227,7 @@ def test_prompt_function():
     print("    天气通过+缺出发地: ✅ 提示问出发地")
 
     # 场景 D：天气不好
-    p = fn({
+    p = _build_dynamic_prompt({
         "destination": "西湖", "date": "周六",
         "weather_checked": True, "weather_ok": False,
         "weather_summary": "中雨",
@@ -238,7 +237,7 @@ def test_prompt_function():
     print("    天气差: ✅ 提示必须调 ask_weather_concern")
 
     # 场景 E：全部就绪
-    p = fn({
+    p = _build_dynamic_prompt({
         "destination": "西湖", "date": "周六", "origin": "杭电",
         "weather_checked": True, "weather_ok": True,
         "weather_summary": "晴", "trip_type": "same_city",
@@ -253,14 +252,13 @@ def test_prompt_function():
 
 
 # ═══════════════════════════════════════
-# 8. supervisor graph 能正常编译
+# 8. orchestrator graph 能正常编译
 # ═══════════════════════════════════════
 
-def test_supervisor_compile():
-    """验证 create_supervisor + HangoutState 能编译成功（不连 MCP）。"""
+def test_orchestrator_compile():
+    """验证 create_agent + HangoutState 能编译成功（不连 MCP）。"""
     from langchain.chat_models import init_chat_model
     from langchain.agents import create_agent
-    from langgraph_supervisor import create_supervisor
     from langgraph.store.memory import InMemoryStore
     from langgraph.checkpoint.memory import InMemorySaver
 
@@ -268,21 +266,11 @@ def test_supervisor_compile():
         HangoutState, update_trip_info, mark_weather_result,
         mark_trip_type, ask_weather_concern, save_final_plan,
     )
-    from app.agents.hangout.supervisor import _make_prompt_fn
+    from app.agents.hangout.orchestrator import _inject_state_prompt
 
-    print("[8] supervisor graph 编译测试:")
+    print("[8] orchestrator graph 编译测试:")
 
     model = init_chat_model("deepseek-chat")
-
-    # 用空的 mock agent 代替真实子 agent
-    mock_weather = create_agent(
-        model, tools=[], name="weather_expert",
-        system_prompt="你是天气专家（测试用空 agent）",
-    )
-    mock_route = create_agent(
-        model, tools=[], name="route_expert",
-        system_prompt="你是路线专家（测试用空 agent）",
-    )
 
     sup_tools = [
         update_trip_info,
@@ -293,15 +281,12 @@ def test_supervisor_compile():
     ]
 
     try:
-        graph = create_supervisor(
-            agents=[mock_weather, mock_route],
+        graph = create_agent(
             model=model,
-            prompt=_make_prompt_fn(),
             tools=sup_tools,
+            system_prompt="你是测试用主 Agent。",
             state_schema=HangoutState,
-            parallel_tool_calls=True,
-            output_mode="full_history",
-        ).compile(
+            middleware=[_inject_state_prompt],
             checkpointer=InMemorySaver(),
             store=InMemoryStore(),
         )
@@ -329,7 +314,7 @@ def main():
         test_save_final_plan,
         test_get_final_plan,
         test_prompt_function,
-        test_supervisor_compile,
+        test_orchestrator_compile,
     ]
 
     passed = 0

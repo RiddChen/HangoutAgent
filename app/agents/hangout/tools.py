@@ -23,7 +23,7 @@ _store: BaseStore | None = None
 
 
 def set_store(store: BaseStore):
-    """由 supervisor 初始化时注入。"""
+    """由 orchestrator 初始化时注入。"""
     global _store
     _store = store
 
@@ -51,7 +51,7 @@ class HangoutState(AgentState):
 
 
 # ═══════════════════════════════════════
-# Supervisor 工具（返回 Command 更新 State）
+# Orchestrator 工具（返回 Command 更新 State）
 # ═══════════════════════════════════════
 
 @tool

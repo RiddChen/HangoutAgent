@@ -25,6 +25,9 @@ token.json
 # Playwright MCP
 .playwright-mcp/
 
+# LangGraph local runtime state
+.langgraph_api/
+
 # Redis dump
 dump.rdb
 

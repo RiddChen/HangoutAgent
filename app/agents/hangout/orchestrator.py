@@ -1,8 +1,8 @@
-# app/agents/hangout/supervisor.py
-"""HangoutSupervisor：基于 Subagents + Handoffs 混合模式编排子 Agent。
+# app/agents/hangout/orchestrator.py
+"""HangoutOrchestrator：基于 Subagents + Handoffs 混合模式编排子 Agent。
 
 架构（LangChain 最新推荐）：
-- Subagents 模式：子 Agent 包装为 tool，Supervisor 通过 tool calling 调度
+- Subagents 模式：子 Agent 包装为 tool，主 Agent 通过 tool calling 调度
 - Handoffs 模式：HangoutState + Command 驱动阶段流转
 - @dynamic_prompt 中间件：每轮自动注入当前状态和阶段提示
 - interrupt 机制：天气确认、邮件发送等人机交互
@@ -25,7 +25,7 @@ from app.agents.hangout.agents import (
     create_email_agent, create_train_agent, create_flight_agent, create_hotel_agent,
 )
 from app.agents.hangout.mcp_client import get_hangout_tools
-from app.agents.hangout.prompts import SUPERVISOR_PROMPT
+from app.agents.hangout.prompts import ORCHESTRATOR_PROMPT
 from app.agents.hangout.tools import (
     HangoutState,
     ask_weather_concern,
@@ -62,7 +62,7 @@ def _build_dynamic_prompt(state: dict) -> str:
     wd = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     today = f"{now.year}年{now.month}月{now.day}日（{wd[now.weekday()]}）"
 
-    parts = [f"{SUPERVISOR_PROMPT}\n\n## 当前日期\n今天是 {today}。所有相对日期以此为准。"]
+    parts = [f"{ORCHESTRATOR_PROMPT}\n\n## 当前日期\n今天是 {today}。所有相对日期以此为准。"]
 
     # ── 自动注入已收集的出行信息 ──
     info_lines = []
@@ -117,10 +117,10 @@ def _inject_state_prompt(request: ModelRequest) -> str:
 # ═══════════════════════════════════════
 
 def _wrap_agent_as_tool(agent, name: str, description: str):
-    """将子 Agent 包装为 Supervisor 可调用的 tool。
+    """将子 Agent 包装为主 Agent 可调用的 tool。
 
-    Supervisor 通过 tool calling 决定何时调用哪个子 Agent，
-    子 Agent 独立运行后将结果返回给 Supervisor 汇总。
+    主 Agent 通过 tool calling 决定何时调用哪个子 Agent，
+    子 Agent 独立运行后将结果返回给主 Agent 汇总。
     """
     @tool(name, description=description)
     async def _call_agent(request: str) -> str:
@@ -174,17 +174,15 @@ def _is_noise(s: str) -> bool:
     t = (s or "").strip().lower()
     if t.startswith("transferring") or t.startswith("successfully transferred"):
         return True
-    if "transfer_back_to_supervisor" in t:
-        return True
     if t.startswith('{"') or t.startswith('[{"'):
         return True
     return False
 
 
 def _visible(meta: dict) -> bool:
-    """只展示 model 节点的消息（Supervisor 的回复），tool 节点不直接流给前端。
+    """只展示 model 节点的消息（主 Agent 的回复），tool 节点不直接流给前端。
 
-    子 Agent 作为 tool 执行，结果由 Supervisor 聚合后统一输出。
+    子 Agent 作为 tool 执行，结果由主 Agent 聚合后统一输出。
     """
     node = meta.get("langgraph_node", "")
     return node == "model"
@@ -211,15 +209,15 @@ async def _emit_deltas(text: str):
 
 
 # ═══════════════════════════════════════
-# HangoutSupervisor
+# HangoutOrchestrator
 # ═══════════════════════════════════════
 
-class HangoutSupervisor:
+class HangoutOrchestrator:
     def __init__(self):
         self.graph = None
 
     async def init(self):
-        logger.info("HangoutSupervisor 初始化中...")
+        logger.info("HangoutOrchestrator 初始化中...")
         await session_manager.init()
 
         tools = await get_hangout_tools()
@@ -273,7 +271,7 @@ class HangoutSupervisor:
             ))
             logger.info("住宿专家已启用")
 
-        # ── Supervisor 自有工具（Command 工具 + 地图工具） ──
+        # ── 主 Agent 自有工具（Command 工具 + 地图工具） ──
         sup_tools = [
             update_trip_info,
             mark_weather_result,
@@ -282,25 +280,25 @@ class HangoutSupervisor:
             save_final_plan,
         ]
         for name in ("maps_geo", "maps_distance", "maps_schema_personal_map"):
-            t = next((t for t in tools["supervisor"] if t.name == name), None)
+            t = next((t for t in tools["orchestrator"] if t.name == name), None)
             if t:
                 sup_tools.append(t)
 
-        # ── 创建 Supervisor Agent（最新 create_agent API） ──
+        # ── 创建主 Agent（最新 create_agent API） ──
         model = init_chat_model("deepseek-chat", streaming=True)
         all_tools = agent_tools + sup_tools
 
         self.graph = create_agent(
             model=model,
             tools=all_tools,
-            system_prompt=SUPERVISOR_PROMPT,       # 基础 prompt（会被 middleware 覆盖）
+            system_prompt=ORCHESTRATOR_PROMPT,    # 基础 prompt（会被 middleware 覆盖）
             state_schema=HangoutState,
             middleware=[_inject_state_prompt],      # @dynamic_prompt 中间件
             checkpointer=session_manager.checkpointer,
             store=session_manager.store,
         )
 
-        logger.info(f"HangoutSupervisor 初始化完成 ✓ ({len(agent_tools)} 个子 Agent)")
+        logger.info(f"HangoutOrchestrator 初始化完成 ✓ ({len(agent_tools)} 个子 Agent)")
 
     async def close(self):
         await session_manager.close()
@@ -378,4 +376,4 @@ def _format_exception(exc: BaseException) -> str:
     return tb or str(exc)
 
 
-hangout_supervisor = HangoutSupervisor()
+hangout_orchestrator = HangoutOrchestrator()
