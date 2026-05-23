@@ -352,6 +352,20 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
 2. 将下载的凭据保存为项目根目录的 `credentials.json`
 3. 首次发送邮件时会自动引导 OAuth 授权，生成 `token.json`
 
+## 架构演进
+
+| 版本 | 架构 | 说明 |
+|------|------|------|
+| v0.1 | `langgraph-supervisor` + `create_supervisor()` | 早期方案，基于 LangGraph 官方的 Supervisor 库，每个子 Agent 是独立的 graph 节点，Supervisor 通过 `transfer_to_xxx` 切换控制权 |
+| **v0.2（当前）** | `langchain.agents.create_agent` + Subagents + Handoffs | 迁移到 LangChain 最新推荐的 Multi-Agent 模式，子 Agent 包装为 `@tool`，主 Agent 通过 tool calling 统一调度；图结构从多节点简化为 `model ↔ tools` 双节点循环 |
+
+**为什么迁移：**
+
+- `langgraph-supervisor` 已被官方标记为不推荐（README 明确注明 "We recommend most users adopt the approaches described in [the LangChain multi-agent docs]"）
+- 新架构使用 `@dynamic_prompt` 中间件替代 callable prompt，更优雅地实现状态注入
+- `Command(update={...})` 替代旧的 handoff/transfer 机制，状态更新更可控
+- 图结构从 `__start__ → supervisor → agent_1/agent_2/... → supervisor → __end__` 简化为 `__start__ → model ↔ tools → __end__`，调试和维护更简单
+
 ## License
 
 MIT
